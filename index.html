@@ -17,470 +17,55 @@
     padding: 7px 16px; border-radius: 999px;
     font: 500 12.5px/1.4 system-ui, "Segoe UI", sans-serif; color: #5a5348;
     box-shadow: 0 2px 12px rgba(60,50,30,.08); pointer-events: none;
+    max-width: 92vw; text-align: center;
   }
+  #toolbar {
+    position: fixed; left: 14px; bottom: 14px; display: flex; gap: 8px;
+  }
+  #toolbar button {
+    background: rgba(255,255,255,.82); backdrop-filter: blur(8px);
+    border: 1px solid rgba(90,80,60,.18); border-radius: 999px;
+    padding: 7px 14px; font: 600 12px/1 system-ui, "Segoe UI", sans-serif;
+    color: #4c463c; cursor: pointer;
+    box-shadow: 0 2px 10px rgba(60,50,30,.10);
+  }
+  #toolbar button:hover { background: #fff; }
+  #toolbar button:active { transform: translateY(1px); }
+  #flash {
+    position: fixed; left: 50%; bottom: 56px; transform: translateX(-50%) translateY(8px);
+    background: rgba(40,36,30,.85); color: #f4efe4;
+    padding: 8px 18px; border-radius: 999px;
+    font: 500 12.5px/1.4 system-ui, sans-serif;
+    opacity: 0; transition: all .25s ease; pointer-events: none;
+  }
+  #flash.show { opacity: 1; transform: translateX(-50%) translateY(0); }
   #credit {
     position: fixed; bottom: 10px; right: 14px;
     font: 400 10.5px/1.4 system-ui, sans-serif; color: #9a917f;
     pointer-events: none;
+  }
+  #ejs-mount {
+    position: fixed; left: -12000px; top: 0;
+    width: 480px; height: 320px;
   }
 </style>
 </head>
 <body>
 <div id="app"></div>
 <div id="vignette"></div>
-<div id="hud">3D GBA 模拟器 · 外观预览（拖动旋转 / 滚轮缩放）</div>
+<div id="hud">拖入 .gba 游玩 · 点击卡带插入/弹出 · 键盘 方向键 / Z(A) X(B) Q(L) E(R) V(Select) Enter(Start)</div>
+<div id="toolbar">
+  <button id="btnImport">导入 ROM</button>
+  <button id="btnEject">弹出卡带</button>
+  <button id="btnSave">存档</button>
+  <button id="btnLoad">读档</button>
+</div>
+<div id="flash"></div>
 <div id="credit">GBA model: “Gameboy Advance - Zelda Concept” by yassineCGI (CC BY 4.0), sketchfab.com</div>
+<input type="file" id="romFile" accept=".gba,.zip" style="display:none">
+<div id="ejs-mount"></div>
 <script type="importmap">{ "imports": { "three": "./assets/vendor/three/three.module.js" } }</script>
-<script type="module">
-import * as THREE from 'three';
-import { OrbitControls } from './assets/vendor/three/controls/OrbitControls.js';
-import { GLTFLoader } from './assets/vendor/three/loaders/GLTFLoader.js';
-import { RoundedBoxGeometry } from './assets/vendor/three/geometries/RoundedBoxGeometry.js';
-
-const params = new URLSearchParams(location.search);
-const DEBUG = params.get('debug') === '1';
-const AUTOROT = params.get('aa') !== '0';
-const YAW = parseFloat(params.get('yaw') ?? '-90') * Math.PI / 180;
-
-/* ================= renderer / scene / camera ================= */
-const app = document.getElementById('app');
-const renderer = new THREE.WebGLRenderer({ antialias: true });
-renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
-renderer.setSize(innerWidth, innerHeight);
-renderer.shadowMap.enabled = true;
-renderer.shadowMap.type = THREE.PCFSoftShadowMap;
-renderer.toneMapping = THREE.ACESFilmicToneMapping;
-renderer.toneMappingExposure = 1.06;
-app.appendChild(renderer.domElement);
-
-const scene = new THREE.Scene();
-scene.background = new THREE.Color('#ede8df');
-scene.fog = new THREE.Fog('#ede8df', 8, 15);
-
-const camera = new THREE.PerspectiveCamera(35, innerWidth / innerHeight, 0.05, 40);
-camera.position.set(
-  parseFloat(params.get('cx') ?? '0.1'),
-  parseFloat(params.get('cy') ?? '0.78'),
-  parseFloat(params.get('cz') ?? '3.15')
-);
-const controls = new OrbitControls(camera, renderer.domElement);
-controls.enableDamping = true;
-controls.dampingFactor = 0.06;
-controls.target.set(0.15, 0.32, 0);
-controls.minDistance = 0.7;
-controls.maxDistance = 7;
-controls.maxPolarAngle = Math.PI * 0.52;
-if (params.get('tx')) controls.target.set(
-  parseFloat(params.get('tx')),
-  parseFloat(params.get('ty') ?? '0.32'),
-  parseFloat(params.get('tz') ?? '0')
-);
-controls.autoRotate = AUTOROT;
-controls.autoRotateSpeed = 0.45;
-let idleTimer = null;
-controls.addEventListener('start', () => {
-  controls.autoRotate = false;
-  clearTimeout(idleTimer);
-});
-controls.addEventListener('end', () => {
-  clearTimeout(idleTimer);
-  idleTimer = setTimeout(() => { if (AUTOROT) controls.autoRotate = true; }, 4000);
-});
-
-/* ================= lights ================= */
-scene.add(new THREE.HemisphereLight('#fffaf0', '#c9c2b4', 1.12));
-
-const key = new THREE.DirectionalLight('#fff4e2', 2.5);
-key.position.set(2.4, 3.4, 2.4);
-key.castShadow = true;
-key.shadow.mapSize.set(2048, 2048);
-key.shadow.camera.left = -3; key.shadow.camera.right = 3;
-key.shadow.camera.top = 3;  key.shadow.camera.bottom = -3;
-key.shadow.bias = -0.0004;
-key.shadow.radius = 7;
-scene.add(key);
-
-const fill = new THREE.DirectionalLight('#dfe9f5', 0.8);
-fill.position.set(-2.6, 1.6, 2.6);
-scene.add(fill);
-
-const rim = new THREE.DirectionalLight('#ffffff', 0.55);
-rim.position.set(-1.4, 2.6, -2.6);
-scene.add(rim);
-
-/* ================= ground ================= */
-const ground = new THREE.Mesh(
-  new THREE.CircleGeometry(10, 72),
-  new THREE.ShadowMaterial({ opacity: 0.26 })
-);
-ground.rotation.x = -Math.PI / 2;
-ground.receiveShadow = true;
-scene.add(ground);
-
-const pad = new THREE.Mesh(
-  new THREE.CylinderGeometry(1.9, 1.98, 0.035, 96),
-  new THREE.MeshStandardMaterial({ color: '#e3ddcf', roughness: 0.94 })
-);
-pad.position.y = 0.017;
-pad.receiveShadow = true;
-pad.castShadow = true;
-scene.add(pad);
-
-/* ================= shared materials ================= */
-const MAT = {
-  shellDark:  new THREE.MeshPhysicalMaterial({ color: '#232329', roughness: 0.5, clearcoat: 0.3, clearcoatRoughness: 0.4 }),
-  buttonLight: new THREE.MeshPhysicalMaterial({ color: '#cfc9e2', roughness: 0.38, clearcoat: 0.5, clearcoatRoughness: 0.3 }),
-  pill:       new THREE.MeshPhysicalMaterial({ color: '#5a5570', roughness: 0.45, clearcoat: 0.3 }),
-  cartShell:  new THREE.MeshPhysicalMaterial({ color: '#d8d5da', roughness: 0.55 }),
-  felt:       new THREE.MeshStandardMaterial({ color: '#2c2b31', roughness: 0.96 }),
-  feltInner:  new THREE.MeshStandardMaterial({ color: '#1c1b20', roughness: 1.0 }),
-  walnut:     new THREE.MeshPhysicalMaterial({ color: '#262126', roughness: 0.42, clearcoat: 0.6, clearcoatRoughness: 0.25 }),
-  glass:      new THREE.MeshPhysicalMaterial({ color: '#05070c', roughness: 0.08, metalness: 0.1, clearcoat: 1, clearcoatRoughness: 0.06 })
-};
-
-/* ================= canvas helpers ================= */
-function canvasTexture(w, h, draw) {
-  const c = document.createElement('canvas');
-  c.width = w; c.height = h;
-  draw(c.getContext('2d'), w, h);
-  const t = new THREE.CanvasTexture(c);
-  t.colorSpace = THREE.SRGBColorSpace;
-  t.anisotropy = 8;
-  return t;
-}
-
-function labelTexture(title, subtitle, bg, fg, blocks) {
-  return canvasTexture(512, 256, (g, w, h) => {
-    g.fillStyle = '#f2f0ec';
-    g.beginPath(); g.roundRect(0, 0, w, h, 26); g.fill();
-    g.fillStyle = bg;
-    g.beginPath(); g.roundRect(30, 34, w - 60, 108, 16); g.fill();
-    g.fillStyle = fg;
-    g.font = '700 58px system-ui, "Segoe UI", sans-serif';
-    g.textBaseline = 'middle';
-    g.fillText(title, 52, 92);
-    g.fillStyle = '#8a857c';
-    g.font = '500 30px system-ui, sans-serif';
-    g.fillText(subtitle, 52, 190);
-    if (blocks) {
-      const cols = { a: '#a8c8a0', b: '#8f86c2', c: '#d8c89a', d: '#9ab4c8' };
-      blocks.split('').forEach((ch, i) => {
-        g.fillStyle = cols[ch] || '#ccc';
-        g.globalAlpha = 0.85;
-        g.fillRect(300 + (i % 7) * 26, 158 + Math.floor(i / 7) * 26, 18, 18);
-        g.globalAlpha = 1;
-      });
-    }
-  });
-}
-
-/* ================= GBA ================= */
-const gba = new THREE.Group();
-gba.position.set(-0.32, 0.036, -0.16);
-gba.rotation.y = YAW;
-scene.add(gba);
-
-const gbaLean = new THREE.Group();     /* pivot at bottom edge for museum lean */
-gba.add(gbaLean);
-
-const INDIGO = new THREE.Color('#6a5aa1');
-const F = 0.176;                        /* front face depth (root-local) */
-
-new GLTFLoader().load('./assets/models/gba.glb', (g) => {
-  const root = g.scene;
-  root.updateMatrixWorld(true);
-
-  root.traverse(o => {
-    if (o.isMesh) {
-      o.castShadow = true; o.receiveShadow = true;
-      const old = o.material;
-      o.material = new THREE.MeshPhysicalMaterial({
-        color: INDIGO,
-        normalMap: old.normalMap || null,
-        roughnessMap: old.roughnessMap || null,
-        normalScale: new THREE.Vector2(0.9, 0.9),
-        roughness: 0.4,
-        clearcoat: 0.3,
-        clearcoatRoughness: 0.32
-      });
-    }
-  });
-
-  /* normalize size: length -> ~1.0 units, bottom on y=0 */
-  const box = new THREE.Box3().setFromObject(root);
-  const size = box.getSize(new THREE.Vector3());
-  const s = 1.0 / Math.max(size.x, size.y, size.z);
-  root.scale.setScalar(s);
-  box.setFromObject(root);
-  const c = box.getCenter(new THREE.Vector3());
-  root.position.sub(new THREE.Vector3(c.x, box.min.y, c.z));
-  gbaLean.add(root);
-
-  /* museum lean back on the stand (local Z = world X = screen-horizontal axis) */
-  gbaLean.rotation.z = 0.20;
-
-  buildOverlayButtons(root);
-  buildScreen(root);
-  buildCartridge(root);
-  buildPowerLed(root);
-});
-
-/* ---- buttons: procedural, cover the sculpted ones (root-local, front = +X) ---- */
-function buildOverlayButtons(root) {
-  const btn = new THREE.Group();
-  root.add(btn);
-
-  /* D-pad: cross of two rounded bars */
-  const dpad = new THREE.Group();
-  dpad.position.set(F - 0.006, 0.130, 0.487);
-  const barGeo1 = new RoundedBoxGeometry(0.030, 0.044, 0.152, 3, 0.013);
-  const barGeo2 = new RoundedBoxGeometry(0.030, 0.152, 0.044, 3, 0.013);
-  const b1 = new THREE.Mesh(barGeo1, MAT.shellDark);
-  const b2 = new THREE.Mesh(barGeo2, MAT.shellDark);
-  b1.castShadow = b2.castShadow = true;
-  dpad.add(b1, b2);
-  btn.add(dpad);
-
-  /* A / B: domed capsules + letter decal — real-GBA layout (A upper-right, B lower-left) */
-  function roundBtn(y, z, letter) {
-    const grp = new THREE.Group();
-    const geo = new THREE.CapsuleGeometry(0.047, 0.004, 6, 28);
-    geo.rotateZ(Math.PI / 2);
-    const m = new THREE.Mesh(geo, MAT.buttonLight);
-    m.castShadow = true;
-    m.position.set(F - 0.030, 0, 0);
-    grp.add(m);
-    const decal = new THREE.Mesh(
-      new THREE.CircleGeometry(0.024, 24),
-      new THREE.MeshBasicMaterial({
-        transparent: true,
-        map: canvasTexture(128, 128, (g, w, h) => {
-          g.clearRect(0, 0, w, h);
-          g.fillStyle = '#4a4658';
-          g.font = '700 70px Georgia, serif';
-          g.textAlign = 'center'; g.textBaseline = 'middle';
-          g.fillText(letter, w / 2, h / 2 + 4);
-        })
-      })
-    );
-    decal.rotation.y = Math.PI / 2;
-    decal.position.x = F + 0.0168;
-    grp.add(decal);
-    grp.position.set(0, y, z);
-    return grp;
-  }
-  btn.add(roundBtn(0.130, -0.552, 'A'));
-  btn.add(roundBtn(0.111, -0.410, 'B'));
-
-  /* Start / Select pills (cover the sculpted ones below the d-pad) */
-  function pill(z, y) {
-    const geo = new RoundedBoxGeometry(0.013, 0.020, 0.062, 2, 0.008);
-    const m = new THREE.Mesh(geo, MAT.pill);
-    m.castShadow = true;
-    m.position.set(F + 0.001, y, z);
-    m.rotation.x = -0.40;
-    return m;
-  }
-  const pills = new THREE.Group();
-  pills.add(pill(0.403, -0.038), pill(0.399, -0.121));
-  btn.add(pills);
-
-  /* L / R shoulder keys on the top bevel */
-  function INDIGO_MAT() {
-    return new THREE.MeshPhysicalMaterial({ color: INDIGO, roughness: 0.4, clearcoat: 0.3, clearcoatRoughness: 0.32 });
-  }
-  function shoulder(z) {
-    const geo = new RoundedBoxGeometry(0.05, 0.030, 0.115, 3, 0.013);
-    const m = new THREE.Mesh(geo, INDIGO_MAT());
-    m.castShadow = true;
-    m.position.set(0.135, 0.205, z);
-    m.rotation.z = 0.35;
-    return m;
-  }
-  btn.add(shoulder(-0.52), shoulder(0.52));
-
-  /* calibration grid over the A/B + d-pad + pill regions */
-  if (params.get('calib') === '1') {
-    const mk = (y, z, r, col) => {
-      const m = new THREE.Mesh(new THREE.SphereGeometry(r, 10, 10),
-        new THREE.MeshBasicMaterial({ color: col }));
-      m.position.set(F + 0.004, y, z);
-      root.add(m);
-    };
-    for (let iz = 0; iz < 9; iz++) {
-      for (let iy = 0; iy < 6; iy++) {
-        const z = 0.55 - iz * 0.14;   /* +0.55 .. -0.57 */
-        const y = 0.20 - iy * 0.09;   /* +0.20 .. -0.25 */
-        const isDpad = Math.abs(y - 0.11) < 0.05 && Math.abs(z + 0.43) < 0.08;
-        mk(y, z, 0.011, isDpad ? '#ff3030' : (iy % 2 ? '#ffffff' : '#ffd700'));
-      }
-    }
-  }
-}
-
-/* ---- screen glass + boot art ---- */
-function buildScreen(root) {
-  const glass = new THREE.Mesh(new THREE.PlaneGeometry(0.585, 0.30), MAT.glass);
-  glass.rotation.y = Math.PI / 2;
-  glass.position.set(F + 0.004, 0.105, 0);
-  root.add(glass);
-
-  const art = canvasTexture(768, 400, (g, w, h) => {
-    const bezel = g.createLinearGradient(0, 0, 0, h);
-    bezel.addColorStop(0, '#11141c'); bezel.addColorStop(1, '#0a0d13');
-    g.fillStyle = bezel; g.fillRect(0, 0, w, h);
-    /* active area 3:2 */
-    const aw = 528, ah = 352;
-    const ax = (w - aw) / 2, ay = (h - ah) / 2;
-    const grd = g.createLinearGradient(ax, ay, ax + aw, ay + ah);
-    grd.addColorStop(0, '#3d3568'); grd.addColorStop(0.55, '#5a4e93'); grd.addColorStop(1, '#3b7a8c');
-    g.fillStyle = grd;
-    g.beginPath(); g.roundRect(ax, ay, aw, ah, 8); g.fill();
-    g.strokeStyle = 'rgba(255,255,255,0.10)';
-    g.lineWidth = 1;
-    for (let i = 1; i < 12; i++) { g.beginPath(); g.moveTo(ax + aw * i / 12, ay); g.lineTo(ax + aw * i / 12, ay + ah); g.stroke(); }
-    for (let j = 1; j < 8; j++) { g.beginPath(); g.moveTo(ax, ay + ah * j / 8); g.lineTo(ax + aw, ay + ah * j / 8); g.stroke(); }
-    g.fillStyle = 'rgba(255,255,255,0.92)';
-    g.font = '700 64px system-ui, "Segoe UI", sans-serif';
-    g.textAlign = 'center'; g.textBaseline = 'middle';
-    g.fillText('3D \u00B7 GBA', w / 2, h / 2 - 18);
-    g.fillStyle = 'rgba(255,255,255,0.55)';
-    g.font = '500 26px system-ui, sans-serif';
-    g.fillText('MUSEUM EXHIBIT \u00B7 INSERT CARTRIDGE', w / 2, h / 2 + 46);
-  });
-  const scr = new THREE.Mesh(
-    new THREE.PlaneGeometry(0.52, 0.271),
-    new THREE.MeshBasicMaterial({ map: art })
-  );
-  scr.rotation.y = Math.PI / 2;
-  scr.position.set(F + 0.0055, 0.105, 0);
-  root.add(scr);
-}
-
-/* ---- cartridge in the top slot ---- */
-function buildCartridge(root) {
-  const cart = new THREE.Group();
-  const body = new THREE.Mesh(new RoundedBoxGeometry(0.052, 0.17, 0.30, 3, 0.018), MAT.cartShell);
-  body.castShadow = true;
-  cart.add(body);
-  /* label decal on viewer side (+X = root-local front) */
-  const lbl = new THREE.Mesh(
-    new THREE.PlaneGeometry(0.24, 0.095),
-    new THREE.MeshBasicMaterial({ map: labelTexture('MINIGBA', 'BUILT-IN DEMO \u00B7 3:2', '#9fd0c5', '#2e4a44', 'abcdcba') })
-  );
-  lbl.rotation.y = Math.PI / 2;
-  lbl.position.set(0.0275, 0.02, 0);
-  cart.add(lbl);
-  /* grip ridges */
-  for (let i = 0; i < 3; i++) {
-    const r = new THREE.Mesh(new THREE.BoxGeometry(0.054, 0.012, 0.02), MAT.cartShell);
-    r.position.set(0, -0.062, 0.105 + i * 0.028);
-    cart.add(r);
-  }
-  cart.position.set(0.07, 0.472, 0);
-  root.add(cart);
-}
-
-/* ---- power LED ---- */
-function buildPowerLed(root) {
-  const led = new THREE.Mesh(
-    new THREE.SphereGeometry(0.009, 12, 12),
-    new THREE.MeshBasicMaterial({ color: '#8cffab' })
-  );
-  led.position.set(F + 0.008, 0.298, -0.30);
-  root.add(led);
-}
-
-/* ================= display stand (gba-local: front = +X) ================= */
-function buildStand() {
-  const grp = new THREE.Group();
-  const back = new THREE.Mesh(new RoundedBoxGeometry(0.035, 0.30, 1.0, 3, 0.015), MAT.walnut);
-  back.position.set(-0.150, 0.14, 0);
-  back.rotation.z = 0.20;
-  back.castShadow = true;
-  grp.add(back);
-  gba.add(grp);
-}
-buildStand();
-
-/* ================= cartridge bag (half-open) ================= */
-function bagCartridge(title, subtitle, bg, fg, blocks) {
-  const grp = new THREE.Group();
-  const body = new THREE.Mesh(new RoundedBoxGeometry(0.048, 0.34, 0.28, 3, 0.015), MAT.cartShell);
-  body.castShadow = true;
-  grp.add(body);
-  const lbl = new THREE.Mesh(
-    new THREE.PlaneGeometry(0.252, 0.155),
-    new THREE.MeshBasicMaterial({ map: labelTexture(title, subtitle, bg, fg, blocks) })
-  );
-  lbl.rotation.y = Math.PI / 2;
-  lbl.position.set(0.0245, 0.03, 0);
-  grp.add(lbl);
-  for (let i = 0; i < 3; i++) {
-    const r = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.014, 0.02), MAT.cartShell);
-    r.position.set(0, -0.125, 0.09 + i * 0.028);
-    grp.add(r);
-  }
-  return grp;
-}
-
-function buildBag() {
-  const bag = new THREE.Group();
-  const W = 0.78, D = 0.40, H = 0.24;
-
-  const shell = new THREE.Mesh(new RoundedBoxGeometry(W, H, D, 4, 0.045), MAT.felt);
-  shell.position.y = H / 2 + 0.035;
-  shell.castShadow = shell.receiveShadow = true;
-  bag.add(shell);
-
-  /* recessed opening */
-  const cavity = new THREE.Mesh(new RoundedBoxGeometry(W - 0.10, 0.14, D - 0.075, 3, 0.035), MAT.feltInner);
-  cavity.position.y = H + 0.035 - 0.048;
-  bag.add(cavity);
-
-  /* folded front flap = "half open" */
-  const flap = new THREE.Mesh(new RoundedBoxGeometry(W - 0.02, 0.13, 0.025, 3, 0.012), MAT.felt);
-  flap.position.set(0, 0.085, D / 2 + 0.014);
-  flap.rotation.x = -0.18;
-  flap.castShadow = true;
-  bag.add(flap);
-
-  /* cartridges standing inside, labels to viewer */
-  const slots = [-0.24, -0.08, 0.08, 0.24];
-  const carts = [
-    bagCartridge('CASCADE7', 'PUZZLE \u00B7 \u2190 \u2192 A \u00B7 L/R \u00B7 START', '#aecfa4', '#33502d', 'abcacbc'),
-    bagCartridge('GBARCA', 'RACING \u00B7 60 FPS', '#b3a5d6', '#3a2f55', 'cbabcbc'),
-    bagCartridge('TETRAHEX', 'BLOCKS \u00B7 MARATHON', '#d6c8a0', '#4f4128', 'bacabab')
-  ];
-  carts.forEach((c, i) => {
-    c.position.set(slots[i], H + 0.028, 0.0);
-    c.rotation.x = -0.30;
-    c.rotation.y = (slots[i] < 0 ? 1 : -1) * 0.05;
-    bag.add(c);
-  });
-  /* plain white cart at the last slot */
-  const plain = new THREE.Mesh(new RoundedBoxGeometry(0.046, 0.30, 0.26, 3, 0.015), MAT.cartShell);
-  plain.position.set(slots[3], H + 0.005, 0.02);
-  plain.rotation.x = -0.28;
-  bag.add(plain);
-
-  bag.position.set(0.64, 0, -0.02);
-  bag.rotation.y = -0.35;
-  scene.add(bag);
-}
-buildBag();
-
-/* ================= resize / loop ================= */
-addEventListener('resize', () => {
-  camera.aspect = innerWidth / innerHeight;
-  camera.updateProjectionMatrix();
-  renderer.setSize(innerWidth, innerHeight);
-});
-
-renderer.setAnimationLoop(() => {
-  controls.update();
-  renderer.render(scene, camera);
-});
-</script>
+<script type="module" src="./assets/js/scene.js"></script>
+<script type="module" src="./assets/js/app.js"></script>
 </body>
 </html>

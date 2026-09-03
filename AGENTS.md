@@ -32,7 +32,11 @@
 │   ├── models/
 │   │   └── gba.glb              # 唯一官方高保真 GBA 3D 展品模型（含屏幕子网格）
 │   ├── roms/
-│   │   └── test3d.gba           # 开箱即用的 3D 演示 ROM
+│   │   ├── celeste.gba          # 内置开源游戏：蔚蓝经典版 (Celeste Classic GBA)
+│   │   ├── anguna.gba           # 内置开源游戏：安古纳 (Anguna: Warriors of Virtue)
+│   │   ├── goodboyadvance.gba   # 内置开源游戏：好狗星系 (Goodboy Galaxy Demo)
+│   │   ├── frogtris.gba         # 内置开源游戏：经典俄罗斯方块 (Frogtris)
+│   │   └── test3d.gba           # 备用 3D 演示 ROM
 │   ├── emulator/                # 自托管 EmulatorJS 运行时、mGBA WASM 核心与本地化配置
 │   └── vendor/three/            # 本地自托管 Three.js r185 及其扩展插件 (GLTFLoader, OrbitControls)
 └── docs/

@@ -56,12 +56,12 @@
   4. 插入卡带且模拟器初始化后，每帧（`onFrame`）从 EmulatorJS 渲染的目标 Canvas 提取画面数据，拷贝至 `screenCanvas` 并标记 `screenTex.needsUpdate = true`。
   5. 屏幕材质的 `emissiveMap` 与 `map` 绑定此 `CanvasTexture`，使得屏幕在 3D 空间自发光并呈现动态游戏画面。
 
-### 2.3 卡带交互状态机 (Cartridge State Machine)
-卡带拥有 4 个核心离散状态：
-1. **BAG_IDLE（卡带袋闲置）**：静置于左侧卡带袋网格槽中。
-2. **HOVER / PICKED（拿起/悬浮）**：点击卡带后，通过 Tween 平滑升起并悬停在控制台上方。
-3. **INSERTING / INSERTED（插入插槽）**：沿特定旋转与平移曲线滑入 GBA 主机背部插槽；锁定后触发模拟器 ROM 加载与开机引导。
-4. **EJECTING（弹出）**：按下弹出按钮或点击已插入卡带，卡带解锁上滑，回到卡带袋槽位，模拟器释放资源并关机。
+### 2.3 卡带交互状态机与按需加载 (Cartridge State Machine & Lazy Loading)
+系统内置 4 盘各具独立贴纸与主题色的实体卡带（CELESTE、ANGUNA、GOODBOY、FROGTRIS），卡带拥有 4 个核心离散状态：
+1. **BAG_IDLE（收纳包闲置）**：静置于右侧毛毡卡带包网格槽中。未游玩前仅保留元数据与相对路径 `romPath`。
+2. **HOVER / PICKED（拿起/悬浮）**：点击 3D 卡带或从工具栏快捷选单选择后，若未缓存 ROM 数据则触发异步惰性拉取（`ensureCartRom`），随后通过 Tween 平滑升起并悬停在插槽上方。
+3. **INSERTING / INSERTED（插入插槽）**：沿特定旋转与平移曲线滑入 GBA 主机背部插槽；锁定后触发 mGBA WASM 核心初始化与开机引导。
+4. **EJECTING（弹出）**：按下弹出按钮、点击已插入卡带或切换其他卡带时，卡带解锁上滑，平滑飞回收纳包槽位，模拟器释放 WebAssembly 实例并关机。
 
 ### 2.4 WebAudio 合成音效引擎 (SFX Engine)
 为了避免加载外部音频文件带来的网络延迟或 404 隐患，系统采用 Web Audio API 进行纯代码合成：

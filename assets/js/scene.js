@@ -465,10 +465,46 @@ function buildBag() {
 
   const slots = [-0.24, -0.08, 0.08, 0.24];
   const defs = [
-    { id: 'cascade7', title: 'CASCADE7', sub: 'PUZZLE \u00B7 \u2190 \u2192 A', bg: '#aecfa4', fg: '#33502d', blocks: 'abcacbc' },
-    { id: 'gbarca',   title: 'GBARCA',   sub: 'RACING \u00B7 60 FPS',      bg: '#b3a5d6', fg: '#3a2f55', blocks: 'cbabcbc' },
-    { id: 'tetrahex', title: 'TETRAHEX', sub: 'BLOCKS \u00B7 MARATHON',    bg: '#d6c8a0', fg: '#4f4128', blocks: 'bacabab' },
-    { id: 'minigba',  title: 'MINIGBA',  sub: 'BUILT-IN DEMO \u00B7 3:2',  bg: '#9fd0c5', fg: '#2e4a44', blocks: 'abcdcba' }
+    {
+      id: 'celeste',
+      title: 'CELESTE',
+      sub: 'CLASSIC \u00B7 JUMP & DASH',
+      desc: '蔚蓝经典版 \u00B7 平台跳跃',
+      bg: '#2b3a4e',
+      fg: '#f08080',
+      blocks: 'abcadcb',
+      romPath: './assets/roms/celeste.gba'
+    },
+    {
+      id: 'anguna',
+      title: 'ANGUNA',
+      sub: 'ARPG \u00B7 SWORD & DUNGEON',
+      desc: '安古纳 \u00B7 类塞尔达ARPG',
+      bg: '#264653',
+      fg: '#e9c46a',
+      blocks: 'cbabcbc',
+      romPath: './assets/roms/anguna.gba'
+    },
+    {
+      id: 'goodboy',
+      title: 'GOODBOY',
+      sub: 'GALAXY \u00B7 SPACE DOG',
+      desc: '好狗星系 \u00B7 探索跳跃冒险',
+      bg: '#d94f2b',
+      fg: '#f8edeb',
+      blocks: 'bacabab',
+      romPath: './assets/roms/goodboyadvance.gba'
+    },
+    {
+      id: 'frogtris',
+      title: 'FROGTRIS',
+      sub: 'PUZZLE \u00B7 FALLING BLOCKS',
+      desc: '经典俄罗斯方块 \u00B7 休闲益智',
+      bg: '#2d6a4f',
+      fg: '#d8f3dc',
+      blocks: 'abcdcba',
+      romPath: './assets/roms/frogtris.gba'
+    }
   ];
   defs.forEach((d, i) => {
     const mesh = makeCartMesh(d.title, d.sub, d.bg, d.fg, d.blocks);
@@ -477,7 +513,8 @@ function buildBag() {
       rot: new THREE.Euler(-0.30, (slots[i] < 0 ? 1 : -1) * 0.05, 0)
     };
     const cart = {
-      id: d.id, name: d.title, mesh, home, rom: null,
+      id: d.id, name: d.title, sub: d.sub, desc: d.desc, mesh, home, rom: null,
+      romPath: d.romPath,
       state: 'bag', slotIndex: i
     };
     mesh.position.copy(home.pos);
@@ -489,10 +526,6 @@ function buildBag() {
   bag.position.set(0.64, 0, -0.02);
   bag.rotation.y = -0.35;
   scene.add(bag);
-
-  /* MINIGBA starts inserted in the GBA */
-  const mini = carts.find(c => c.id === 'minigba');
-  insertIntoSlotInstant(mini);
 }
 
 export function insertIntoSlotInstant(cart) {

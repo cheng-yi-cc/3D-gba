@@ -4,7 +4,7 @@ import {
   tween, tweenVec3, params,
   drawBootArt, drawScreenMessage, screenCtx, screenCanvas, screenTex, setLed,
   slotWorldPos, rootWorldQuat, bagHomeWorld,
-  onFrame
+  onFrame, whenModelReady
 } from './scene.js';
 
 /* ================= SFX (WebAudio synth, no assets) ================= */
@@ -222,9 +222,37 @@ function insertFlight(cart, done) {
 
 function scene_attach(mesh) { scene.attach(mesh); }
 
-function playCart(cart) {
-  if (busy || cart.state !== 'bag' || !cart.rom) return;
+async function ensureCartRom(cart) {
+  if (cart.rom && cart.rom.data) return cart.rom;
+  if (!cart.romPath) return null;
+  drawScreenMessage('DOWNLOADING...', (cart.name || 'ROM') + ' \u00B7 GBA');
+  try {
+    const res = await fetch(cart.romPath);
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    const buf = await res.arrayBuffer();
+    cart.rom = { name: (cart.name || 'GAME') + '.gba', data: buf };
+    return cart.rom;
+  } catch (err) {
+    drawScreenMessage('LOAD ERROR', '无法加载内置 ROM: ' + err.message, true);
+    SFX.error();
+    return null;
+  }
+}
+
+async function playCart(cart) {
+  if (busy || cart.state !== 'bag') return;
   busy = true;
+  if (!cart.rom && cart.romPath) {
+    const loaded = await ensureCartRom(cart);
+    if (!loaded) {
+      busy = false;
+      return;
+    }
+  }
+  if (!cart.rom) {
+    busy = false;
+    return;
+  }
   const cur = state.activeCart;
   const doInsert = () => insertFlight(cart, () => { bootRom(cart); busy = false; });
   if (cur && cur.state === 'inserted') ejectFlight(cur, doInsert);
@@ -347,7 +375,7 @@ addEventListener('pointerup', (e) => {
   if (isClick && downInfo.pick && downInfo.pick.type === 'cart') {
     const cart = downInfo.pick.cart;
     if (cart.state === 'inserted') ejectActive();
-    else if (cart.rom) playCart(cart);
+    else if (cart.rom || cart.romPath) playCart(cart);
     else { pendingCart = cart; fileInput.click(); }
   }
   downInfo = null;
@@ -360,7 +388,46 @@ renderer.domElement.addEventListener('pointermove', (e) => {
   renderer.domElement.style.cursor = p ? 'pointer' : '';
 });
 
-/* ================= HUD ================= */
+/* ================= HUD & Built-in Game Menu ================= */
+const gameDropdown = document.getElementById('gameDropdown');
+const btnGames = document.getElementById('btnGames');
+
+function initGameMenu() {
+  if (!gameDropdown) return;
+  gameDropdown.innerHTML = '';
+  carts.forEach(cart => {
+    const item = document.createElement('div');
+    item.className = 'game-item';
+    item.dataset.id = cart.id;
+    item.innerHTML = `
+      <div class="game-item-title">${cart.name}</div>
+      <div class="game-item-desc">${cart.desc || cart.sub || ''}</div>
+    `;
+    item.addEventListener('click', (e) => {
+      e.stopPropagation();
+      gameDropdown.classList.remove('show');
+      if (state.activeCart === cart && cart.state === 'inserted') {
+        flash('当前已在运行 · ' + cart.name);
+        return;
+      }
+      playCart(cart);
+    });
+    gameDropdown.appendChild(item);
+  });
+}
+
+whenModelReady(() => {
+  initGameMenu();
+});
+
+if (btnGames && gameDropdown) {
+  btnGames.addEventListener('click', (e) => {
+    e.stopPropagation();
+    gameDropdown.classList.toggle('show');
+  });
+  addEventListener('click', () => gameDropdown.classList.remove('show'));
+}
+
 document.getElementById('btnImport').addEventListener('click', (e) => {
   pendingCart = null;
   fileInput.click();

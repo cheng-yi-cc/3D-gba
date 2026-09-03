@@ -1,4 +1,4 @@
-﻿<!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="zh">
 <head>
 <meta charset="UTF-8">
@@ -21,6 +21,7 @@
   }
   #toolbar {
     position: fixed; left: 14px; bottom: 14px; display: flex; gap: 8px;
+    align-items: center; z-index: 20;
   }
   #toolbar button {
     background: rgba(255,255,255,.82); backdrop-filter: blur(8px);
@@ -28,9 +29,50 @@
     padding: 7px 14px; font: 600 12px/1 system-ui, "Segoe UI", sans-serif;
     color: #4c463c; cursor: pointer;
     box-shadow: 0 2px 10px rgba(60,50,30,.10);
+    transition: all .2s ease;
   }
-  #toolbar button:hover { background: #fff; }
+  #toolbar button:hover { background: #fff; transform: translateY(-1px); }
   #toolbar button:active { transform: translateY(1px); }
+  #toolbar button.btn-highlight {
+    background: #3e3852; color: #f5f2eb; border-color: #2b263b;
+    box-shadow: 0 2px 12px rgba(62, 56, 82, 0.28);
+  }
+  #toolbar button.btn-highlight:hover {
+    background: #4f4769;
+  }
+  .dropdown { position: relative; }
+  .dropdown-menu {
+    position: absolute; bottom: calc(100% + 10px); left: 0;
+    width: 250px; background: rgba(255, 255, 255, 0.94);
+    backdrop-filter: blur(14px);
+    border: 1px solid rgba(90, 80, 60, 0.18);
+    border-radius: 14px;
+    box-shadow: 0 10px 28px rgba(60, 50, 30, 0.16);
+    padding: 6px; display: none; flex-direction: column; gap: 3px;
+    z-index: 30;
+    animation: fadeInMenu .18s cubic-bezier(0.16, 1, 0.3, 1);
+  }
+  .dropdown-menu.show { display: flex; }
+  @keyframes fadeInMenu {
+    from { opacity: 0; transform: translateY(6px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+  .game-item {
+    padding: 8px 12px; border-radius: 8px; cursor: pointer;
+    transition: background .15s ease;
+    text-align: left;
+  }
+  .game-item:hover {
+    background: rgba(90, 80, 60, 0.08);
+  }
+  .game-item-title {
+    font: 700 12.5px/1.3 system-ui, "Segoe UI", sans-serif;
+    color: #2e2a24;
+  }
+  .game-item-desc {
+    font: 400 11px/1.2 system-ui, sans-serif;
+    color: #7d7467; margin-top: 2px;
+  }
   #flash {
     position: fixed; left: 50%; bottom: 56px; transform: translateX(-50%) translateY(8px);
     background: rgba(40,36,30,.85); color: #f4efe4;
@@ -53,8 +95,12 @@
 <body>
 <div id="app"></div>
 <div id="vignette"></div>
-<div id="hud">拖入 .gba 游玩 · 点击卡带插入/弹出 · 键盘 方向键 / Z(A) X(B) Q(L) E(R) V(Select) Enter(Start)</div>
+<div id="hud">点击右侧卡带插入游玩 · 亦可拖入本地 .gba · 方向键 / Z(A) X(B) Q(L) E(R) V(Select) Enter(Start)</div>
 <div id="toolbar">
+  <div class="dropdown">
+    <button id="btnGames" class="btn-highlight">🎮 经典游戏 ▾</button>
+    <div id="gameDropdown" class="dropdown-menu"></div>
+  </div>
   <button id="btnImport">导入 ROM</button>
   <button id="btnEject">弹出卡带</button>
   <button id="btnSave">存档</button>

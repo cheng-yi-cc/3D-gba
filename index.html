@@ -90,12 +90,140 @@
     position: fixed; left: -12000px; top: 0;
     width: 480px; height: 320px;
   }
+  /* 快捷键速查面板 */
+  #cheatSheet {
+    position: fixed; top: 14px; right: 14px;
+    background: rgba(255, 255, 255, 0.85); backdrop-filter: blur(14px);
+    border: 1px solid rgba(90, 80, 60, 0.18);
+    border-radius: 14px;
+    box-shadow: 0 4px 20px rgba(60, 50, 30, 0.10);
+    padding: 10px 14px;
+    z-index: 25;
+    user-select: none;
+    transition: all 0.22s cubic-bezier(0.16, 1, 0.3, 1);
+    min-width: 178px;
+  }
+  #cheatSheet.collapsed {
+    min-width: unset;
+    padding: 6px 12px;
+    border-radius: 999px;
+    cursor: pointer;
+    background: rgba(255, 255, 255, 0.88);
+  }
+  #cheatSheet.collapsed:hover {
+    background: #ffffff;
+    transform: translateY(-1px);
+    box-shadow: 0 6px 22px rgba(60, 50, 30, 0.14);
+  }
+  .cs-header {
+    display: flex; align-items: center; justify-content: space-between;
+    gap: 10px; margin-bottom: 8px;
+  }
+  #cheatSheet.collapsed .cs-header {
+    margin-bottom: 0;
+  }
+  .cs-title {
+    font: 700 12px/1 system-ui, "Segoe UI", sans-serif;
+    color: #4a4338;
+    display: flex; align-items: center; gap: 5px;
+  }
+  .cs-toggle {
+    background: rgba(90, 80, 60, 0.08); border: none; border-radius: 6px;
+    width: 20px; height: 20px; font-size: 13px; font-weight: 700; line-height: 1;
+    color: #6d6455; cursor: pointer; display: flex; align-items: center; justify-content: center;
+    transition: all 0.15s ease;
+  }
+  .cs-toggle:hover {
+    background: rgba(90, 80, 60, 0.16); color: #2e2a24;
+  }
+  .cs-body {
+    display: flex; flex-direction: column; gap: 6px;
+  }
+  #cheatSheet.collapsed .cs-body {
+    display: none;
+  }
+  .cs-row {
+    display: flex; align-items: center; justify-content: space-between;
+    gap: 8px; font-size: 11.5px;
+  }
+  .cs-label {
+    color: #847a6d; font-weight: 600; font-size: 11px;
+    min-width: 28px;
+  }
+  .cs-keys {
+    display: flex; align-items: center; gap: 4px;
+  }
+  .cs-key-group {
+    display: inline-flex; align-items: center; gap: 3px;
+  }
+  .cs-note {
+    font-size: 9.5px; font-weight: 700; color: #9c9284;
+  }
+  kbd {
+    display: inline-block;
+    background: linear-gradient(to bottom, #ffffff, #ece7df);
+    border: 1px solid #c8c0b3;
+    border-bottom: 2px solid #a89f90;
+    border-radius: 4px;
+    padding: 2px 5px;
+    font: 700 10.5px/1.1 ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+    color: #383228;
+    box-shadow: 0 1px 2px rgba(0,0,0,0.05);
+    text-align: center; min-width: 11px;
+    transition: all 0.07s ease;
+  }
+  kbd.active {
+    transform: translateY(1px);
+    background: #6a5aa1;
+    border-color: #534483;
+    border-bottom: 1px solid #3d3066;
+    color: #ffffff;
+    box-shadow: 0 0 6px rgba(106, 90, 161, 0.5);
+  }
 </style>
 </head>
 <body>
 <div id="app"></div>
 <div id="vignette"></div>
-<div id="hud">点击右侧卡带插入游玩 · 亦可拖入本地 .gba · 方向键 / Z(A) X(B) Q(L) E(R) V(Select) Enter(Start)</div>
+<div id="hud">点击卡带插入游玩 · 亦可拖入本地 .gba · 键盘快捷键见右上角</div>
+<div id="cheatSheet">
+  <div class="cs-header">
+    <span class="cs-title">⌨️ 快捷键速查</span>
+    <button id="csToggle" class="cs-toggle" title="折叠快捷键">−</button>
+  </div>
+  <div class="cs-body" id="csBody">
+    <div class="cs-row">
+      <span class="cs-label">移动</span>
+      <div class="cs-keys">
+        <kbd class="kbd-up">W</kbd>
+        <kbd class="kbd-left">A</kbd>
+        <kbd class="kbd-down">S</kbd>
+        <kbd class="kbd-right">D</kbd>
+      </div>
+    </div>
+    <div class="cs-row">
+      <span class="cs-label">动作</span>
+      <div class="cs-keys">
+        <span class="cs-key-group"><kbd class="kbd-b">J</kbd><span class="cs-note">B</span></span>
+        <span class="cs-key-group"><kbd class="kbd-a">K</kbd><span class="cs-note">A</span></span>
+      </div>
+    </div>
+    <div class="cs-row">
+      <span class="cs-label">肩键</span>
+      <div class="cs-keys">
+        <span class="cs-key-group"><kbd class="kbd-l">U</kbd><span class="cs-note">L</span></span>
+        <span class="cs-key-group"><kbd class="kbd-r">I</kbd><span class="cs-note">R</span></span>
+      </div>
+    </div>
+    <div class="cs-row">
+      <span class="cs-label">系统</span>
+      <div class="cs-keys">
+        <span class="cs-key-group"><kbd class="kbd-start">Enter</kbd><span class="cs-note">Start</span></span>
+        <span class="cs-key-group"><kbd class="kbd-select">Space</kbd><span class="cs-note">Select</span></span>
+      </div>
+    </div>
+  </div>
+</div>
 <div id="toolbar">
   <div class="dropdown">
     <button id="btnGames" class="btn-highlight">🎮 经典游戏 ▾</button>

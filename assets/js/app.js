@@ -381,13 +381,18 @@ fileInput.addEventListener('change', () => {
   pendingCart = null;
 });
 
-/* ================= input bridge ================= */
+function setKeycapActive(name, active) {
+  const els = document.querySelectorAll(`.kbd-${name}`);
+  els.forEach(el => el.classList.toggle('active', active));
+}
+
 function pressButton(name) {
   const b = buttons[name];
   if (!b || b.pressed) return;
   b.pressed = true;
   b.press();
   SFX.tick();
+  setKeycapActive(name, true);
   if (live && b.index >= 0) {
     try { window.EJS_emulator.gameManager.simulateInput(0, b.index, 1); } catch (e) {}
   }
@@ -397,24 +402,80 @@ function releaseButton(name) {
   if (!b || !b.pressed) return;
   b.pressed = false;
   b.release();
+  setKeycapActive(name, false);
   if (live && b.index >= 0) {
     try { window.EJS_emulator.gameManager.simulateInput(0, b.index, 0); } catch (e) {}
   }
 }
 
 const KEY2BTN = {
-  ArrowUp: 'dpad', ArrowDown: 'dpad', ArrowLeft: 'dpad', ArrowRight: 'dpad',
-  KeyZ: 'a', KeyX: 'b', KeyQ: 'l', KeyE: 'r', KeyV: 'select', Enter: 'start'
+  // 方向键：WASD (主) + Arrow Keys (备用兼容)
+  KeyW: 'up',
+  ArrowUp: 'up',
+  KeyS: 'down',
+  ArrowDown: 'down',
+  KeyA: 'left',
+  ArrowLeft: 'left',
+  KeyD: 'right',
+  ArrowRight: 'right',
+
+  // 动作键：J(B) / K(A) (主) + Z(B) / X(A) (备用兼容)
+  KeyJ: 'b',
+  KeyZ: 'b',
+  KeyK: 'a',
+  KeyX: 'a',
+
+  // 肩键：U(L) / I(R) (主) + Q(L) / E(R) (备用兼容)
+  KeyU: 'l',
+  KeyQ: 'l',
+  KeyI: 'r',
+  KeyE: 'r',
+
+  // 系统键：Enter(Start) / Space(Select) + V(Select 备用)
+  Enter: 'start',
+  Space: 'select',
+  KeyV: 'select'
 };
+
 addEventListener('keydown', (e) => {
-  if (e.repeat) return;
   const b = KEY2BTN[e.code];
-  if (b) { pressButton(b); e.preventDefault(); }
+  if (b) {
+    e.preventDefault();
+    if (!e.repeat) pressButton(b);
+  }
 });
+
 addEventListener('keyup', (e) => {
   const b = KEY2BTN[e.code];
-  if (b) releaseButton(b);
+  if (b) {
+    releaseButton(b);
+    e.preventDefault();
+  }
 });
+
+// 窗口失焦时安全释放所有按键，杜绝切屏导致角色长跑卡死
+window.addEventListener('blur', () => {
+  Object.keys(buttons).forEach(releaseButton);
+});
+
+// 右上角快捷键速查面板折叠/展开交互
+const csToggle = document.getElementById('csToggle');
+const cheatSheet = document.getElementById('cheatSheet');
+if (csToggle && cheatSheet) {
+  csToggle.addEventListener('click', (e) => {
+    e.stopPropagation();
+    const isCol = cheatSheet.classList.toggle('collapsed');
+    csToggle.textContent = isCol ? '+' : '−';
+    csToggle.title = isCol ? '展开快捷键' : '折叠快捷键';
+  });
+  cheatSheet.addEventListener('click', (e) => {
+    if (cheatSheet.classList.contains('collapsed')) {
+      cheatSheet.classList.remove('collapsed');
+      csToggle.textContent = '−';
+      csToggle.title = '折叠快捷键';
+    }
+  });
+}
 
 /* pointer: buttons press + cart clicks */
 const ray = new THREE.Raycaster();

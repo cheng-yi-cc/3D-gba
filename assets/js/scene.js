@@ -321,7 +321,7 @@ function buildOverlayButtons(rt) {
   const btn = new THREE.Group();
   rt.add(btn);
 
-  /* D-pad */
+  /* D-pad: 4 directions with realistic physical tilt & picking proxies */
   const dpad = new THREE.Group();
   dpad.position.set(F - 0.006, 0.130, 0.487);
   const b1 = new THREE.Mesh(new RoundedBoxGeometry(0.030, 0.044, 0.152, 3, 0.013), MAT.shellDark);
@@ -329,9 +329,52 @@ function buildOverlayButtons(rt) {
   b1.castShadow = b2.castShadow = true;
   dpad.add(b1, b2);
   btn.add(dpad);
-  const dpadHome = dpad.position.clone();
-  registerButton('dpad', -1, dpad, [b1, b2],
-    () => sink(dpad, 0.008), () => unsink(dpad, dpadHome));
+
+  const dpadHomePos = dpad.position.clone();
+  const dpadHomeRot = dpad.rotation.clone();
+
+  function updateDpadPhysics() {
+    const up = !!buttons['up']?.pressed;
+    const down = !!buttons['down']?.pressed;
+    const left = !!buttons['left']?.pressed;
+    const right = !!buttons['right']?.pressed;
+
+    const dy = (up ? 1 : 0) - (down ? 1 : 0);
+    const dz = (left ? 1 : 0) - (right ? 1 : 0);
+    const any = up || down || left || right;
+
+    const targetX = any ? dpadHomePos.x - 0.004 : dpadHomePos.x;
+    const targetRotZ = dpadHomeRot.z + dy * 0.065;
+    const targetRotY = dpadHomeRot.y + dz * 0.065;
+
+    const fromX = dpad.position.x;
+    const fromRotZ = dpad.rotation.z;
+    const fromRotY = dpad.rotation.y;
+
+    tween(70, (e) => {
+      dpad.position.x = THREE.MathUtils.lerp(fromX, targetX, e);
+      dpad.rotation.z = THREE.MathUtils.lerp(fromRotZ, targetRotZ, e);
+      dpad.rotation.y = THREE.MathUtils.lerp(fromRotY, targetRotY, e);
+    }, null, easeOut);
+  }
+
+  // Picking proxies for the four wings (transparent, raycastable)
+  const hitMat = new THREE.MeshBasicMaterial({ transparent: true, opacity: 0, depthWrite: false });
+  const hitUp = new THREE.Mesh(new THREE.BoxGeometry(0.034, 0.060, 0.046), hitMat);
+  hitUp.position.set(0, 0.049, 0);
+  const hitDown = new THREE.Mesh(new THREE.BoxGeometry(0.034, 0.060, 0.046), hitMat);
+  hitDown.position.set(0, -0.049, 0);
+  const hitLeft = new THREE.Mesh(new THREE.BoxGeometry(0.034, 0.046, 0.060), hitMat);
+  hitLeft.position.set(0, 0, 0.049);
+  const hitRight = new THREE.Mesh(new THREE.BoxGeometry(0.034, 0.046, 0.060), hitMat);
+  hitRight.position.set(0, 0, -0.049);
+
+  dpad.add(hitUp, hitDown, hitLeft, hitRight);
+
+  registerButton('up', 4, dpad, [hitUp], updateDpadPhysics, updateDpadPhysics);
+  registerButton('down', 5, dpad, [hitDown], updateDpadPhysics, updateDpadPhysics);
+  registerButton('left', 6, dpad, [hitLeft], updateDpadPhysics, updateDpadPhysics);
+  registerButton('right', 7, dpad, [hitRight], updateDpadPhysics, updateDpadPhysics);
 
   /* A / B */
   function roundBtn(y, z, letter, name, index) {

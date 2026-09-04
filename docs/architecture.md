@@ -61,7 +61,11 @@
 1. **BAG_IDLE（收纳包闲置）**：静置于右侧毛毡卡带包网格槽中。未游玩前仅保留元数据与相对路径 `romPath`。
 2. **HOVER / PICKED（拿起/悬浮）**：点击 3D 卡带或从工具栏快捷选单选择后，若未缓存 ROM 数据则触发异步惰性拉取（`ensureCartRom`），随后通过 Tween 平滑升起并悬停在插槽上方。
 3. **INSERTING / INSERTED（插入插槽）**：沿特定旋转与平移曲线滑入 GBA 主机背部插槽；锁定后触发 mGBA WASM 核心初始化与开机引导。
-4. **EJECTING（弹出）**：按下弹出按钮、点击已插入卡带或切换其他卡带时，卡带解锁上滑，平滑飞回收纳包槽位，模拟器释放 WebAssembly 实例并关机。
+4. **EJECTING（弹出即断电）**：按下弹出按钮、点击已插入卡带或换卡时，在触发的第 0 毫秒（$t=0$）立即触发模拟器强制下电机制：
+   - 全局 WebAudio 沙箱同步调用 `suspend()` 和 `close()` 彻底释放模拟器声卡通道，断开 OpenAL 源节点；
+   - 调用 `toggleMainLoop(0)` 与 `pauseMainLoop()` 挂起 WASM 主循环，不再占用 CPU；
+   - 递增 `currentSessionId` 作废挂起的异步资源加载，防止空机唤醒；
+   - 主机电源 LED 熄灭，屏幕即刻复位至待机画面（`drawBootArt`），卡带沿拟真物理抛物线平滑飞回收纳包。
 
 ### 2.4 WebAudio 合成音效引擎 (SFX Engine)
 为了避免加载外部音频文件带来的网络延迟或 404 隐患，系统采用 Web Audio API 进行纯代码合成：

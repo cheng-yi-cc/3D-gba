@@ -7,12 +7,35 @@ import {
   onFrame, whenModelReady
 } from './scene.js';
 
+/* ================= Audio Tracking & Sandboxing ================= */
+const emulatorAudioContexts = new Set();
+const NativeAudioContext = window.AudioContext || window.webkitAudioContext;
+let isCreatingSFXAudio = false;
+
+if (NativeAudioContext) {
+  const TrackedAudioContext = function(...args) {
+    const actx = new NativeAudioContext(...args);
+    if (!isCreatingSFXAudio) {
+      emulatorAudioContexts.add(actx);
+    }
+    return actx;
+  };
+  TrackedAudioContext.prototype = NativeAudioContext.prototype;
+  window.AudioContext = TrackedAudioContext;
+  if (window.webkitAudioContext) window.webkitAudioContext = TrackedAudioContext;
+}
+
 /* ================= SFX (WebAudio synth, no assets) ================= */
 const SFX = (() => {
   let ctx = null, master = null;
   function ensure() {
     if (!ctx) {
-      ctx = new (window.AudioContext || window.webkitAudioContext)();
+      isCreatingSFXAudio = true;
+      try {
+        ctx = new NativeAudioContext();
+      } finally {
+        isCreatingSFXAudio = false;
+      }
       master = ctx.createGain();
       master.gain.value = 0.55;
       master.connect(ctx.destination);
@@ -61,10 +84,11 @@ addEventListener('pointerdown', () => SFX.unlock(), { once: false });
 addEventListener('keydown', () => SFX.unlock(), { once: false });
 
 /* ================= EmulatorJS bridge ================= */
-let live = false, ejsCanvas = null, bootWatchdog = 0;
+let live = false, ejsCanvas = null, bootWatchdog = 0, currentSessionId = 0;
 
 function bootRom(cart) {
   stopEmulator();
+  const thisSession = ++currentSessionId;
   drawScreenMessage('LOADING', cart.rom.name.toUpperCase().slice(0, 24));
   const mount = document.getElementById('ejs-mount');
   mount.innerHTML = '';
@@ -83,6 +107,10 @@ function bootRom(cart) {
     fastForward: false, slowMotion: false, saveStateSlot: false, stretch: false
   };
   window.EJS_onGameStart = () => {
+    if (thisSession !== currentSessionId || state.activeCart !== cart || cart.state !== 'inserted') {
+      stopEmulator();
+      return;
+    }
     live = true;
     ejsCanvas = document.querySelector('#ejs-mount canvas');
     setLed(true);
@@ -95,21 +123,58 @@ function bootRom(cart) {
   document.body.appendChild(s);
   clearTimeout(bootWatchdog);
   bootWatchdog = setTimeout(() => {
+    if (thisSession !== currentSessionId) return;
     if (!live) {
       drawScreenMessage('CARTRIDGE ERROR', '读取失败 · 请更换有效的 .gba ROM', true);
       SFX.error();
-      setTimeout(() => ejectActive(), 2000);
+      setTimeout(() => {
+        if (thisSession === currentSessionId) ejectActive();
+      }, 2000);
     }
   }, 20000);
 }
 
 function stopEmulator() {
+  currentSessionId++;
   clearTimeout(bootWatchdog);
+  window.EJS_onGameStart = null;
+
   if (window.EJS_emulator) {
-    try { window.EJS_emulator.gameManager.saveSaveFiles(); } catch (e) {}
-    try { window.EJS_emulator.remove(); } catch (e) {}
+    const emu = window.EJS_emulator;
+    try { emu.gameManager?.saveSaveFiles?.(); } catch (e) {}
+    try { emu.setVolume?.(0); } catch (e) {}
+    try { emu.pause?.(); } catch (e) {}
+    try { emu.gameManager?.toggleMainLoop?.(0); } catch (e) {}
+    try { emu.callEvent?.('exit'); } catch (e) {}
+    try { emu.Module?.pauseMainLoop?.(); } catch (e) {}
+
+    // 释放 OpenAL 音频源与上下文
+    const al = emu.Module?.AL?.currentCtx || window.AL?.currentCtx;
+    if (al) {
+      try {
+        if (al.sources) {
+          al.sources.forEach(src => {
+            try { if (src.gain?.gain) src.gain.gain.value = 0; } catch (e) {}
+            try { src.source?.stop?.(); } catch (e) {}
+            try { src.source?.disconnect?.(); } catch (e) {}
+          });
+        }
+      } catch (e) {}
+      try { al.audioCtx?.suspend?.(); } catch (e) {}
+      try { al.audioCtx?.close?.(); } catch (e) {}
+    }
     window.EJS_emulator = null;
   }
+
+  // 关闭所有追踪到的模拟器 WebAudio 上下文，彻底切断声卡输出
+  emulatorAudioContexts.forEach(actx => {
+    try { actx.suspend?.(); } catch (e) {}
+    try { actx.close?.(); } catch (e) {}
+  });
+  emulatorAudioContexts.clear();
+
+  try { delete window.Module; } catch (e) {}
+  try { delete window.AL; } catch (e) {}
   document.querySelectorAll('script[data-ejs]').forEach(x => x.remove());
   document.getElementById('ejs-mount').innerHTML = '';
   live = false;
@@ -174,6 +239,7 @@ let busy = false;
 
 function ejectFlight(cart, done) {
   SFX.eject();
+  cart.state = 'flight';
   const mesh = cart.mesh;
   scene_attach(mesh);
   const p0 = mesh.position.clone(), q0 = mesh.quaternion.clone();
@@ -195,6 +261,7 @@ function ejectFlight(cart, done) {
 }
 
 function insertFlight(cart, done) {
+  cart.state = 'flight';
   const mesh = cart.mesh;
   scene_attach(mesh);
   const p0 = mesh.position.clone(), q0 = mesh.quaternion.clone();
@@ -255,17 +322,24 @@ async function playCart(cart) {
   }
   const cur = state.activeCart;
   const doInsert = () => insertFlight(cart, () => { bootRom(cart); busy = false; });
-  if (cur && cur.state === 'inserted') ejectFlight(cur, doInsert);
-  else doInsert();
+  if (cur && cur.state === 'inserted') {
+    stopEmulator();
+    drawBootArt();
+    state.activeCart = null;
+    ejectFlight(cur, doInsert);
+  } else {
+    doInsert();
+  }
 }
 
 function ejectActive() {
   const cur = state.activeCart;
   if (!cur || cur.state !== 'inserted' || busy) return;
   busy = true;
+  stopEmulator();
+  drawBootArt();
+  state.activeCart = null;
   ejectFlight(cur, () => {
-    stopEmulator();
-    drawBootArt();
     busy = false;
   });
 }

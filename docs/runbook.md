@@ -69,5 +69,5 @@ python -m http.server 3000
 - **解决**：在页面任意位置点击一次或按任意键，系统内部的 `SFX.unlock()` 会自动唤醒音频上下文。
 
 ### Q3: 弹出卡带后画面仍卡在屏幕上或出现音频残留
-- **原因**：旧版模拟器实例未能完全卸载。
-- **解决**：代码中已在 `stopEmulator()` 时彻底清空 `#ejs-mount` 并调用 `window.EJS_emulator?.exit?.()`，若排查自定义逻辑，请确保调用 `stopEmulator()` 后再重置离屏 Canvas。
+- **原因**：旧版模拟器实例未能完全卸载，或 WebAudio/OpenAL 声卡通道在后台持续保持连接。
+- **解决**：`assets/js/app.js` 现已内置 `stopEmulator()` 完整销毁管线：在拔出触发瞬间调用 `actx.close()` 释放声卡通道，断开 OpenAL sources，暂停 WASM 主循环并重置离屏 Canvas，确保音画与硬件状态在 0ms 内同步归零。

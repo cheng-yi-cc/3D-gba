@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import {
-  scene, renderer, camera, buttons, carts, state, bag, root,
+  scene, renderer, camera, controls, buttons, carts, state, bag, root,
   tween, tweenVec3, params,
   drawBootArt, drawScreenMessage, screenCtx, screenCanvas, screenTex, setLed,
   slotWorldPos, rootWorldQuat, bagHomeWorld,
@@ -329,8 +329,16 @@ function releaseButton(name) {
 }
 
 const KEY2BTN = {
-  ArrowUp: 'dpad', ArrowDown: 'dpad', ArrowLeft: 'dpad', ArrowRight: 'dpad',
-  KeyZ: 'a', KeyX: 'b', KeyQ: 'l', KeyE: 'r', KeyV: 'select', Enter: 'start'
+  ArrowUp: 'up', KeyW: 'up',
+  ArrowDown: 'down', KeyS: 'down',
+  ArrowLeft: 'left', KeyA: 'left',
+  ArrowRight: 'right', KeyD: 'right',
+  KeyZ: 'a', KeyJ: 'a',
+  KeyX: 'b', KeyK: 'b',
+  KeyQ: 'l', KeyU: 'l',
+  KeyE: 'r', KeyI: 'r',
+  KeyV: 'select', ShiftRight: 'select',
+  Enter: 'start', Space: 'start'
 };
 addEventListener('keydown', (e) => {
   if (e.repeat) return;
@@ -365,9 +373,14 @@ function pickAt(x, y) {
 
 renderer.domElement.addEventListener('pointerdown', (e) => {
   downInfo = { x: e.clientX, y: e.clientY, t: performance.now(), pick: pickAt(e.clientX, e.clientY) };
-  if (downInfo.pick && downInfo.pick.type === 'button') pressButton(downInfo.pick.name);
+  if (downInfo.pick && downInfo.pick.type === 'button') {
+    controls.enabled = false;
+    pressButton(downInfo.pick.name);
+  }
 });
-addEventListener('pointerup', (e) => {
+
+function handlePointerRelease(e) {
+  controls.enabled = true;
   Object.keys(buttons).forEach(releaseButton);
   if (!downInfo) return;
   const dx = e.clientX - downInfo.x, dy = e.clientY - downInfo.y;
@@ -379,7 +392,9 @@ addEventListener('pointerup', (e) => {
     else { pendingCart = cart; fileInput.click(); }
   }
   downInfo = null;
-});
+}
+addEventListener('pointerup', handlePointerRelease);
+addEventListener('pointercancel', handlePointerRelease);
 
 /* hover cursor */
 renderer.domElement.addEventListener('pointermove', (e) => {

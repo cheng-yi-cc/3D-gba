@@ -285,9 +285,175 @@ export function makeCartMesh(title, sub, bg, fg, blocks) {
   return grp;
 }
 
-// 原模静态按键专属顶点索引集（A/B键、十字移动键、选择键、开始键，共 869 个顶点）
-// 经过全模拓扑分析严格剥离了白色机壳与按键孔边缘，100% 杜绝任何外壳破损与下凹缺口
-const BUTTON_VERTICES = new Uint16Array([
+// 真孔标定（root 局部系，与拾取同系，由 baseColor 纹理+几何反推，精度 0.001；纹理字母已逐像素核对：右上 A / 左下 B）
+// A/B 红键顶面圆心（直径 0.082），D-pad 十字中心（总长 0.166/臂宽 0.020），
+// Select/Start 绿键（直径 0.036，垂直同列 Z=0.3927），L/R 肩键（顶边大曲板中心）。
+const TRUE_POS = {
+  a: [0.183834, 0.142394, -0.543761],
+  b: [0.183419, 0.100668, -0.425457],
+  dpad: [0.176, 0.114083, 0.483594],
+  select: [0.183328, -0.068942, 0.392699],
+  start: [0.183328, -0.142511, 0.392699],
+  l: [0.0776, 0.360519, 0.469188],
+  r: [0.0797, 0.359695, -0.467844]
+};
+// 原模型顶点按压（忠实形状：不加任何可见块，不永久改机壳；静息零变形）
+// root 局部系：rx=S*px, ry=S*pz, rz=-S*py；前键压 -X，肩键压 -Y，D-pad 另加小倾角。
+const CHAIN_S = 1.046477198600769;
+const PRESS_DEPTH = { a: 0.0075, b: 0.0075, select: 0.006, start: 0.006, l: 0.008, r: 0.008, dpadSink: 0.005 };
+const FRONT_PX = 0.173;    // 仅凸起键顶/上侧壁，机壳平面与凹槽刻字不动
+const SHOULDER_RY = 0.295;
+let pressAttr = null, pressBase = null;
+const pressSets = {};
+function smooth01(x) { x = Math.min(1, Math.max(0, x)); return x * x * (3 - 2 * x); }
+// 肩键颜色锁定：只让黑色肩键板动，白色外壳权重归零（采样 baseColor，2048 一次性读入）
+let shoulderSampler = null;
+function getShoulderSampler(mesh) {
+  if (shoulderSampler) return shoulderSampler;
+  try {
+    const img = mesh.material?.map?.image;
+    const uv = mesh.geometry?.attributes?.uv;
+    if (!img || !uv || !img.width) return null;
+    const S = Math.min(2048, img.naturalWidth || img.width);
+    const cv = document.createElement('canvas');
+    cv.width = S; cv.height = S;
+    const g = cv.getContext('2d', { willReadFrequently: true });
+    g.drawImage(img, 0, 0, S, S);
+    const d = g.getImageData(0, 0, S, S).data;
+    shoulderSampler = { data: d, S };
+    return shoulderSampler;
+  } catch (e) { return null; }
+}
+function shoulderDark(i, uvAttr, samp) {
+  const u = uvAttr.getX(i), v = uvAttr.getY(i);
+  const x = Math.min(samp.S - 1, Math.max(0, (u * samp.S) | 0));
+  const y = Math.min(samp.S - 1, Math.max(0, (v * samp.S) | 0));
+  const o = (y * samp.S + x) * 4;
+  const bright = (samp.data[o] + samp.data[o + 1] + samp.data[o + 2]) / 3;
+  return 1 - smooth01((bright - 110) / 40);
+}
+function classifyPressVerts(mesh) {
+  const pos = mesh.geometry?.attributes?.position;
+  if (!pos) return;
+  pressAttr = pos;
+  pressBase = new Float32Array(pos.array);
+  const uvAttr = mesh.geometry?.attributes?.uv;
+  const samp = (uvAttr && mesh.material?.map?.image) ? getShoulderSampler(mesh) : null;
+  const buckets = { a: [], b: [], select: [], start: [], l: [], r: [], dpad: [] };
+  const bws = { a: [], b: [], select: [], start: [], l: [], r: [], dpad: [] };
+  const A = TRUE_POS.a, B = TRUE_POS.b, DP = TRUE_POS.dpad;
+  const SE = TRUE_POS.select, ST = TRUE_POS.start, L = TRUE_POS.l, R = TRUE_POS.r;
+  const arr = pos.array;
+  for (let i = 0; i < pos.count; i++) {
+    const px = arr[i * 3], py = arr[i * 3 + 1], pz = arr[i * 3 + 2];
+    const rx = CHAIN_S * px, ry = CHAIN_S * pz, rz = -CHAIN_S * py;
+    if (rx > FRONT_PX) {
+      const dA = Math.hypot(ry - A[1], rz - A[2]);
+      const dB = Math.hypot(ry - B[1], rz - B[2]);
+      const dSe = Math.hypot(ry - SE[1], rz - SE[2]);
+      const dSt = Math.hypot(ry - ST[1], rz - ST[2]);
+      const dyD = Math.abs(ry - DP[1]), dzD = Math.abs(rz - DP[2]);
+      const wV = (1 - smooth01((dzD - 0.010) / 0.002)) * (1 - smooth01((dyD - 0.083) / 0.002));
+      const wH = (1 - smooth01((dyD - 0.010) / 0.002)) * (1 - smooth01((dzD - 0.083) / 0.002));
+      const cands = [
+        ['dpad', Math.max(wV, wH)],
+        ['a', 1 - smooth01((dA - 0.0415) / 0.002)],
+        ['b', 1 - smooth01((dB - 0.0415) / 0.002)],
+        ['select', 1 - smooth01((dSe - 0.0185) / 0.002)],
+        ['start', 1 - smooth01((dSt - 0.0185) / 0.002)]
+      ];
+      let best = null, bestW = 0.001;
+      for (const [id, w] of cands) if (w > bestW) { best = id; bestW = w; }
+      if (best) { buckets[best].push(i); bws[best].push(bestW); }
+    } else if (ry > SHOULDER_RY) {
+      let wL = (1 - smooth01((Math.abs(rx - L[0]) - 0.065) / 0.010)) * (1 - smooth01((Math.abs(rz - L[2]) - 0.125) / 0.012));
+      let wR = (1 - smooth01((Math.abs(rx - R[0]) - 0.065) / 0.010)) * (1 - smooth01((Math.abs(rz - R[2]) - 0.125) / 0.012));
+      if (samp && (wL > 0.001 || wR > 0.001)) {
+        const dk = shoulderDark(i, uvAttr, samp);
+        wL *= dk; wR *= dk;
+      }
+      if (wL > 0.001 && wL >= wR) { buckets.l.push(i); bws.l.push(wL); }
+      else if (wR > 0.001) { buckets.r.push(i); bws.r.push(wR); }
+    }
+  }
+  for (const id of Object.keys(buckets)) {
+    pressSets[id] = { idx: new Uint32Array(buckets[id]), w: new Float32Array(bws[id]) };
+  }
+}
+function applySinglePress(id, amt) {
+  if (!pressAttr || !pressSets[id]) return;
+  const set = pressSets[id];
+  const depth = PRESS_DEPTH[id] || 0.006;
+  const arr = pressAttr.array;
+  if (id === 'l' || id === 'r') {
+    for (let j = 0; j < set.idx.length; j++) {
+      const i = set.idx[j];
+      arr[i * 3 + 2] = pressBase[i * 3 + 2] - (depth * amt * set.w[j]) / CHAIN_S;
+    }
+  } else {
+    for (let j = 0; j < set.idx.length; j++) {
+      const i = set.idx[j];
+      arr[i * 3] = pressBase[i * 3] - (depth * amt * set.w[j]) / CHAIN_S;
+    }
+  }
+  pressAttr.needsUpdate = true;
+}
+const dpadCur = { ry: 0, rz: 0, sx: 0 };
+function applyDpadPress() {
+  if (!pressAttr || !pressSets.dpad) return;
+  const DP = TRUE_POS.dpad;
+  const cx = DP[0], cy = DP[1], cz = DP[2];
+  const cRy = Math.cos(dpadCur.ry), sRy = Math.sin(dpadCur.ry);
+  const cRz = Math.cos(dpadCur.rz), sRz = Math.sin(dpadCur.rz);
+  const set = pressSets.dpad;
+  const arr = pressAttr.array;
+  for (let j = 0; j < set.idx.length; j++) {
+    const i = set.idx[j], w = set.w[j];
+    const bx = pressBase[i * 3], by = pressBase[i * 3 + 1], bz = pressBase[i * 3 + 2];
+    const rx = CHAIN_S * bx, ry = CHAIN_S * bz, rz = -CHAIN_S * by;
+    const dx = rx - cx, dy = ry - cy, dz = rz - cz;
+    const x1 = dx * cRz - dy * sRz, y1 = dx * sRz + dy * cRz;
+    const x2 = x1 * cRy + dz * sRy, y2 = y1, z2 = -x1 * sRy + dz * cRy;
+    const ox = (x2 - dx + dpadCur.sx) * w, oy = (y2 - dy) * w, oz = (z2 - dz) * w;
+    arr[i * 3] = bx + ox / CHAIN_S;
+    arr[i * 3 + 1] = by + (-oz) / CHAIN_S;
+    arr[i * 3 + 2] = bz + oy / CHAIN_S;
+  }
+  pressAttr.needsUpdate = true;
+}
+function updateDpadPress() {
+  const tRz = (buttons['up']?.pressed ? 0.15 : 0) + (buttons['down']?.pressed ? -0.15 : 0);
+  const tRy = (buttons['left']?.pressed ? -0.15 : 0) + (buttons['right']?.pressed ? 0.15 : 0);
+  const any = buttons['up']?.pressed || buttons['down']?.pressed || buttons['left']?.pressed || buttons['right']?.pressed;
+  const to = { ry: tRy, rz: tRz, sx: any ? -PRESS_DEPTH.dpadSink : 0 };
+  const from = { ry: dpadCur.ry, rz: dpadCur.rz, sx: dpadCur.sx };
+  tween(70, (k) => {
+    dpadCur.ry = from.ry + (to.ry - from.ry) * k;
+    dpadCur.rz = from.rz + (to.rz - from.rz) * k;
+    dpadCur.sx = from.sx + (to.sx - from.sx) * k;
+    applyDpadPress();
+  }, null, easeOut);
+}
+function vertexPress(id, dur) {
+  const b = buttons[id];
+  const from = (b && b.amt) || 0;
+  tween(dur, (k) => {
+    const a = from + (1 - from) * k;
+    if (b) b.amt = a;
+    applySinglePress(id, a);
+  }, null, easeOut);
+}
+function vertexRelease(id, dur) {
+  const b = buttons[id];
+  const from = (b && b.amt) || 0;
+  tween(dur, (k) => {
+    const a = from * (1 - k);
+    if (b) b.amt = a;
+    applySinglePress(id, a);
+  }, null, easeOut);
+}
+// 已废弃的静态索引集（左偏且 Select 错位，已不再使用，仅保留避免误删）：
+const BUTTON_VERTICES_DEPRECATED = new Uint16Array([
   8241, 8242, 8497, 8498, 8499, 8506, 8507, 8508, 8509, 8513, 8514, 8515, 8518, 8519, 8520, 8521, 8522, 8523, 8535, 8536,
   8538, 8539, 8540, 8541, 8542, 8543, 8544, 8546, 8548, 8549, 8550, 8558, 8559, 8560, 8564, 8565, 8566, 13391, 13394, 13395,
   13396, 13442, 13443, 13444, 13445, 13446, 13448, 13449, 13450, 13467, 13468, 19023, 19038, 19046, 19050, 19053, 19069, 19113, 19114, 19116,
@@ -354,24 +520,8 @@ new GLTFLoader().load('./assets/models/gba.glb', (g) => {
         clearcoatRoughness: 0.32
       });
 
-      // 精确沉降原模静态按键顶点，使所有按键槽成为平整深凹坑，彻底解决穿模且 100% 保护白色机壳无任何下凹
-      const pos = o.geometry?.attributes?.position;
-      if (pos) {
-        const toRoot = new THREE.Matrix4().copy(root.matrixWorld).invert().multiply(o.matrixWorld);
-        const toLocal = toRoot.clone().invert();
-        const v = new THREE.Vector3();
-        for (let idx = 0; idx < BUTTON_VERTICES.length; idx++) {
-          const i = BUTTON_VERTICES[idx];
-          if (i < pos.count) {
-            v.fromBufferAttribute(pos, i).applyMatrix4(toRoot);
-            v.x -= 0.024;
-            v.applyMatrix4(toLocal);
-            pos.setXYZ(i, v.x, v.y, v.z);
-          }
-        }
-        pos.needsUpdate = true;
-        o.geometry.computeVertexNormals();
-      }
+      // 分类原模型按键顶点（只记录权重，不永久改机壳；静息零变形）
+      classifyPressVerts(o);
     }
   });
 
@@ -418,201 +568,51 @@ function buildOverlayButtons(rt) {
   const btn = new THREE.Group();
   rt.add(btn);
 
-  /* D-pad (4-way directional cross with realistic rocker switch physics) */
-  const dpad = new THREE.Group();
-  dpad.position.set(0.180, 0.1189, 0.4840);
-  btn.add(dpad);
+  /* D-pad：用原模型黑十字（箭头/中心凹点都在原几何纹理上），不重建条块；四向独立不可见拾取 */
+  const dpadPick = new THREE.Group();
+  dpadPick.position.set(TRUE_POS.dpad[0], TRUE_POS.dpad[1], TRUE_POS.dpad[2]);
+  btn.add(dpadPick);
 
-  const dpadHome = dpad.position.clone();
-
-  const geoArmY = new RoundedBoxGeometry(0.024, 0.054, 0.046, 3, 0.010);
-  const geoArmZ = new RoundedBoxGeometry(0.024, 0.046, 0.054, 3, 0.010);
-  const geoCenter = new RoundedBoxGeometry(0.024, 0.046, 0.046, 2, 0.010);
-
-  const mCenter = new THREE.Mesh(geoCenter, MAT.shellDark);
-  mCenter.castShadow = true;
-  dpad.add(mCenter);
-
-  const mUp = new THREE.Mesh(geoArmY, MAT.shellDark);
-  mUp.castShadow = true;
-  mUp.position.set(0, 0.052, 0);
-  dpad.add(mUp);
-
-  const mDown = new THREE.Mesh(geoArmY, MAT.shellDark);
-  mDown.castShadow = true;
-  mDown.position.set(0, -0.052, 0);
-  dpad.add(mDown);
-
-  const mLeft = new THREE.Mesh(geoArmZ, MAT.shellDark);
-  mLeft.castShadow = true;
-  mLeft.position.set(0, 0, 0.052);
-  dpad.add(mLeft);
-
-  const mRight = new THREE.Mesh(geoArmZ, MAT.shellDark);
-  mRight.castShadow = true;
-  mRight.position.set(0, 0, -0.052);
-  dpad.add(mRight);
-
-  /* Central recessed indentation */
-  const indent = new THREE.Mesh(
-    new THREE.CylinderGeometry(0.011, 0.011, 0.004, 16),
-    new THREE.MeshPhysicalMaterial({ color: '#16161c', roughness: 0.7 })
-  );
-  indent.rotation.z = Math.PI / 2;
-  indent.position.set(0.012, 0, 0);
-  dpad.add(indent);
-
-  function updateDpadVisual() {
-    const rz = (buttons['up']?.pressed ? 0.15 : 0) + (buttons['down']?.pressed ? -0.15 : 0);
-    const ry = (buttons['left']?.pressed ? -0.15 : 0) + (buttons['right']?.pressed ? 0.15 : 0);
-    const any = buttons['up']?.pressed || buttons['down']?.pressed || buttons['left']?.pressed || buttons['right']?.pressed;
-    const targetPos = any ? dpadHome.clone().setComponent(0, dpadHome.x - 0.005) : dpadHome;
-    const fromPos = dpad.position.clone();
-    const fromRot = dpad.rotation.clone();
-    const toRot = new THREE.Euler(0, ry, rz);
-    tween(70, (k) => {
-      dpad.position.lerpVectors(fromPos, targetPos, k);
-      dpad.rotation.x = THREE.MathUtils.lerp(fromRot.x, toRot.x, k);
-      dpad.rotation.y = THREE.MathUtils.lerp(fromRot.y, toRot.y, k);
-      dpad.rotation.z = THREE.MathUtils.lerp(fromRot.z, toRot.z, k);
-    }, null, easeOut);
+  // 四向独立不可见拾取盒（视觉隐藏但可射线命中，保持 up(4)/down(5)/left(6)/right(7) 解耦）
+  const hitMat = new THREE.MeshBasicMaterial({ transparent: true, opacity: 0, depthWrite: false });
+  function dpadHit(sx, sy, sz, px, py, pz) {
+    const h = new THREE.Mesh(new THREE.BoxGeometry(sx, sy, sz), hitMat);
+    h.position.set(px, py, pz);
+    dpadPick.add(h);
+    return h;
   }
+  const mUp = dpadHit(0.04, 0.062, 0.032, 0, 0.052, 0);
+  const mDown = dpadHit(0.04, 0.062, 0.032, 0, -0.052, 0);
+  const mLeft = dpadHit(0.04, 0.032, 0.062, 0, 0, 0.052);
+  const mRight = dpadHit(0.04, 0.032, 0.062, 0, 0, -0.052);
 
-  registerButton('up', 4, dpad, [mUp], updateDpadVisual, updateDpadVisual);
-  registerButton('down', 5, dpad, [mDown], updateDpadVisual, updateDpadVisual);
-  registerButton('left', 6, dpad, [mLeft], updateDpadVisual, updateDpadVisual);
-  registerButton('right', 7, dpad, [mRight], updateDpadVisual, updateDpadVisual);
+  registerButton('up', 4, dpadPick, [mUp], updateDpadPress, updateDpadPress);
+  registerButton('down', 5, dpadPick, [mDown], updateDpadPress, updateDpadPress);
+  registerButton('left', 6, dpadPick, [mLeft], updateDpadPress, updateDpadPress);
+  registerButton('right', 7, dpadPick, [mRight], updateDpadPress, updateDpadPress);
 
-  /* A / B (Nintendo 官方掌机硬件标准：左 B 右 A) */
-  function roundBtn(pos, normal, letter, name, index) {
-    const grp = new THREE.Group();
-    grp.position.copy(pos);
-    const q = new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(1, 0, 0), normal);
-    grp.quaternion.copy(q);
-
-    const btnHeight = 0.020;
-    const btnRadius = 0.0412;
-    const geo = new THREE.CylinderGeometry(btnRadius * 0.98, btnRadius * 1.01, btnHeight, 32);
-    geo.rotateZ(-Math.PI / 2);
-    const m = new THREE.Mesh(geo, MAT.buttonOrange);
-    m.castShadow = true;
-    m.position.set(-btnHeight / 2, 0, 0);
-    grp.add(m);
-
-    const decalGeo = new THREE.CircleGeometry(0.024, 32);
-    decalGeo.rotateY(Math.PI / 2);
-    const decal = new THREE.Mesh(
-      decalGeo,
-      new THREE.MeshBasicMaterial({
-        transparent: true,
-        map: canvasTexture(256, 256, (g, w, h) => {
-          g.clearRect(0, 0, w, h);
-          g.shadowColor = 'rgba(0,0,0,0.55)';
-          g.shadowBlur = 4;
-          g.shadowOffsetY = 2;
-          g.fillStyle = '#451004';
-          g.font = '900 136px "Helvetica Neue", Arial, sans-serif';
-          g.textAlign = 'center';
-          g.textBaseline = 'middle';
-          g.fillText(letter, w / 2, h / 2);
-        }),
-        polygonOffset: true,
-        polygonOffsetFactor: -1,
-        polygonOffsetUnits: -1
-      })
-    );
-    decal.position.set(0.0006, 0, 0);
-    grp.add(decal);
-
-    btn.add(grp);
-
-    const homePos = grp.position.clone();
-    const pressedPos = homePos.clone().addScaledVector(normal, -0.0075);
-
-    registerButton(name, index, grp, [m, decal],
-      () => tween(75, (k) => grp.position.lerpVectors(homePos, pressedPos, k), null, easeOut),
-      () => tween(110, (k) => grp.position.lerpVectors(grp.position, homePos, k), null, easeOut)
-    );
+  /* A / B（Nintendo 左 B 右 A；用原模型红键，不加圆柱/贴字；不可见拾取+原顶点下沉） */
+  // 不可见拾取体（opacity 0）+ 原顶点按压，下同 Select/Start/肩键共用
+  const pickMat = new THREE.MeshBasicMaterial({ transparent: true, opacity: 0, depthWrite: false });
+  function pressPick(id, index, cx, cy, cz, sx, sy, sz, downDur, upDur) {
+    const pick = new THREE.Mesh(new THREE.BoxGeometry(sx, sy, sz), pickMat);
+    pick.position.set(cx, cy, cz);
+    btn.add(pick);
+    registerButton(id, index, pick, [pick],
+      () => vertexPress(id, downDur),
+      () => vertexRelease(id, upDur));
   }
+  // 右 A：高位靠右；左 B：低位靠左（红键直径 0.082，拾取盒稍放大到 0.095）
+  pressPick('a', 8, TRUE_POS.a[0], TRUE_POS.a[1], TRUE_POS.a[2], 0.03, 0.095, 0.095, 75, 110);
+  pressPick('b', 0, TRUE_POS.b[0], TRUE_POS.b[1], TRUE_POS.b[2], 0.03, 0.095, 0.095, 75, 110);
 
-  const normA = new THREE.Vector3(0.9948, -0.0718, 0.0718).normalize();
-  const normB = new THREE.Vector3(0.9874, -0.0081, 0.1581).normalize();
-  // 右 A：高位靠右
-  roundBtn(new THREE.Vector3(0.1838, 0.1424, -0.5438), normA, 'A', 'a', 8);
-  // 左 B：低位靠左
-  roundBtn(new THREE.Vector3(0.1834, 0.1007, -0.4255), normB, 'B', 'b', 0);
+  /* Select / Start：用原模型绿键（垂直同列 Z=0.3927，Select 上 Start 下），不加绿圆柱；不可见拾取+原顶点下沉 */
+  pressPick('select', 2, TRUE_POS.select[0], TRUE_POS.select[1], TRUE_POS.select[2], 0.03, 0.05, 0.05, 70, 100);
+  pressPick('start', 3, TRUE_POS.start[0], TRUE_POS.start[1], TRUE_POS.start[2], 0.03, 0.05, 0.05, 70, 100);
 
-  /* Start / Select (圆柱形导电胶按键，100% 精确对齐原模凹槽小圆孔，彻底告别药丸长条) */
-  function roundRubberBtn(pos, normal, name, index) {
-    const grp = new THREE.Group();
-    grp.position.copy(pos);
-    const q = new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(1, 0, 0), normal);
-    grp.quaternion.copy(q);
-
-    const btnRadius = 0.0125;
-    const btnHeight = 0.016;
-    const geo = new THREE.CylinderGeometry(btnRadius * 0.95, btnRadius, btnHeight, 24);
-    geo.rotateZ(-Math.PI / 2);
-    const m = new THREE.Mesh(geo, MAT.pillGreen);
-    m.castShadow = true;
-    m.position.set(-btnHeight / 2 + 0.002, 0, 0);
-    grp.add(m);
-
-    btn.add(grp);
-
-    const homePos = grp.position.clone();
-    const pressedPos = homePos.clone().addScaledVector(normal, -0.006);
-
-    registerButton(name, index, grp, [m],
-      () => tween(70, (k) => grp.position.lerpVectors(homePos, pressedPos, k), null, easeOut),
-      () => tween(100, (k) => grp.position.lerpVectors(grp.position, homePos, k), null, easeOut)
-    );
-  }
-
-  const normSelect = new THREE.Vector3(0.9313, -0.0034, 0.3642).normalize();
-  const normStart  = new THREE.Vector3(0.9941, -0.1081, 0).normalize();
-  roundRubberBtn(new THREE.Vector3(0.1830, 0.0266, 0.4702), normSelect, 'select', 2);
-  roundRubberBtn(new THREE.Vector3(0.1830, -0.1394, 0.4084), normStart, 'start', 3);
-
-  /* L / R shoulders (z > 0 is machine left/L, z < 0 is machine right/R) */
-  function shoulder(z, name, index, letter) {
-    const grp = new THREE.Group();
-    const m = new THREE.Mesh(
-      new RoundedBoxGeometry(0.05, 0.030, 0.115, 3, 0.013),
-      MAT.shoulderDark
-    );
-    m.castShadow = true;
-    grp.add(m);
-
-    const decal = new THREE.Mesh(
-      new THREE.PlaneGeometry(0.036, 0.036),
-      new THREE.MeshBasicMaterial({
-        transparent: true,
-        map: canvasTexture(128, 128, (g, w, h) => {
-          g.clearRect(0, 0, w, h);
-          g.fillStyle = '#8a8794';
-          g.font = '700 80px Georgia, serif';
-          g.textAlign = 'center'; g.textBaseline = 'middle';
-          g.fillText(letter, w / 2, h / 2 + 2);
-        })
-      })
-    );
-    decal.rotation.y = Math.PI / 2;
-    decal.position.x = 0.026;
-    grp.add(decal);
-
-    grp.position.set(0.135, 0.205, z);
-    grp.rotation.z = 0.35;
-    btn.add(grp);
-    const home = grp.position.clone();
-    const from = home.clone();
-    const to = home.clone(); to.y -= 0.008;
-    registerButton(name, index, grp, [m, decal],
-      () => tween(90, (e) => grp.position.lerpVectors(from, to, e), null, easeOut),
-      () => tween(140, (e) => grp.position.lerpVectors(to, from, e), null, easeOut));
-  }
-  shoulder(0.52, 'l', 10, 'L');
-  shoulder(-0.52, 'r', 11, 'R');
+  /* L / R 肩键：用原模型顶边大曲板（带 L/R 浮雕），不加小方块；不可见拾取+原顶点下沉 */
+  pressPick('l', 10, TRUE_POS.l[0], TRUE_POS.l[1], TRUE_POS.l[2], 0.16, 0.10, 0.28, 90, 140);
+  pressPick('r', 11, TRUE_POS.r[0], TRUE_POS.r[1], TRUE_POS.r[2], 0.16, 0.10, 0.28, 90, 140);
 }
 
 /* ---- screen glass ---- */

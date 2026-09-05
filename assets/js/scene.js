@@ -285,7 +285,7 @@ export function makeCartMesh(title, sub, bg, fg, blocks) {
   return grp;
 }
 
-// 真孔标定（root 局部系，与拾取同系，由 baseColor 纹理+几何反推，精度 0.001；纹理字母已逐像素核对：右上 A / 左下 B）
+// 真孔标定（root 局部系，与拾取同系，由 baseColor 纹理+几何反推，精度 0.001；键帽浮雕字母已按官方标准重绘：右上 A / 左下 B）
 // A/B 红键顶面圆心（直径 0.082），D-pad 十字中心（总长 0.166/臂宽 0.020），
 // Select/Start 绿键（直径 0.036，垂直同列 Z=0.3927），L/R 肩键（顶边大曲板中心）。
 const TRUE_POS = {
@@ -500,7 +500,7 @@ const BUTTON_VERTICES_DEPRECATED = new Uint16Array([
   20458, 20461, 20464, 20469, 20470, 20473, 20476, 20479, 20482,
 ]);
 
-new GLTFLoader().load('./assets/models/gba.glb', (g) => {
+new GLTFLoader().load('./assets/models/gba.glb?v=20260905', (g) => {
   root = g.scene;
   root.updateMatrixWorld(true);
 

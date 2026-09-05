@@ -419,10 +419,10 @@ const KEY2BTN = {
   KeyD: 'right',
   ArrowRight: 'right',
 
-  // 动作键：J(A) / K(B) (主) + Z(B) / X(A) (备用兼容，空间对应左 B 右 A)
-  KeyJ: 'a',
+  // 动作键：J(B) / K(A) (主) + Z(B) / X(A) (备用兼容，键盘左右对应机身左右：左 B 右 A)
+  KeyJ: 'b',
   KeyZ: 'b',
-  KeyK: 'b',
+  KeyK: 'a',
   KeyX: 'a',
 
   // 肩键：U(L) / I(R) (主) + Q(L) / E(R) (备用兼容)

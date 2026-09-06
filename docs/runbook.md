@@ -75,3 +75,12 @@ python -m http.server 3000
 ### Q4: 改了 `gba.glb` 模型但预览没变化
 - **原因**：浏览器缓存了旧模型文件。
 - **解决**：同步 bump `assets/js/scene.js` 里模型加载 URL 的 `?v=` 查询串（如 `gba.glb?v=20260905`），然后 Ctrl+F5 硬刷新。
+
+---
+
+## 5. 线上部署（Cloudflare Pages，已接通）
+
+- **项目**：Cloudflare Pages `gba`（`gba-9cq.pages.dev`，自定义域 `gba.chengyi.me`），Git 直连 `cheng-yi-cc/3D-gba`。
+- **自动部署**：生产分支 `master`，`push` 到 `master` 自动触发 Production 构建并上线；构建配置：框架预设无、构建命令空、输出目录 `/`（纯静态，无需构建）。
+- **注意**：GitHub 仓库已由 `3Dgad` 改名为 `3D-gba`，本地 `origin` 已同步为新地址；旧地址经 GitHub 重定向仍可用，但请统一用新地址。
+- **验证**：push 后到 Pages 项目 → 部署页确认出现对应 commit 的 Production 部署，再 `curl` 线上 HTML 确认内容已更新。

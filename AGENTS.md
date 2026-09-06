@@ -73,4 +73,4 @@ python -m http.server 3000
 - **十字键四向解耦**：十字键底层已解耦为 `up`(4)、`down`(5)、`left`(6)、`right`(7) 四向独立通道与力学杠杆倾斜动力学。严禁将其回退为单一且未绑定索引的按键。
 - **按键防黏连与事件隔离**：键盘事件监听必须基于物理键码 `e.code`（如 `KeyW`, `Space`），严格阻止 `Space` 等默认浏览器滚动；必须绑定 `window.blur` 自动复位所有按键，杜绝切屏导致角色原地长跑卡死。
 - **模拟器生命周期与即时断电**：拔出或切换卡带时必须在点击的第 0 毫秒立即调用 `stopEmulator()`，同步释放模拟器 WebAudio 上下文（`close()` / `suspend()`）、暂停 WASM 主循环并切回待机贴图，杜绝声音残留与空转。
-- **自动巡览恢复机制**：用户操作 OrbitControls 后，控制器会在闲置 4 秒后自动恢复低速旋转（可通过 `?aa=0` 临时关闭）。
+- **自动巡览恢复机制**：用户操作 OrbitControls 后，控制器会在闲置 4 秒后自动恢复低速旋转（可通过 `?aa=0` 设默认关）。底部工具栏 `#btnRotate` 为唯一手动开关（`isAutoRotateEnabled` / `setAutoRotateEnabled`，选择记入 `localStorage gba3d-autorotate`）；插入卡带游玩时 `setPlaying(true)` 自动暂停，拔卡归位后 `setPlaying(false)` 恢复，严禁在游玩中恢复旋转。

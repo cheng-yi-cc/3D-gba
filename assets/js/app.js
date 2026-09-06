@@ -4,7 +4,8 @@ import {
   tween, tweenVec3, params,
   drawBootArt, drawScreenMessage, screenCtx, screenCanvas, screenTex, setLed,
   slotWorldPos, rootWorldQuat, bagHomeWorld,
-  onFrame, whenModelReady
+  onFrame, whenModelReady,
+  setPlaying, isAutoRotateEnabled, setAutoRotateEnabled
 } from './scene.js';
 
 /* ================= Audio Tracking & Sandboxing ================= */
@@ -281,6 +282,7 @@ function insertFlight(cart, done) {
       mesh.rotation.set(0, 0, 0);
       cart.state = 'inserted';
       state.activeCart = cart;
+      setPlaying(true);
       SFX.lock();
       done && done();
     });
@@ -321,6 +323,7 @@ async function playCart(cart) {
     return;
   }
   const cur = state.activeCart;
+  setPlaying(true);
   const doInsert = () => insertFlight(cart, () => { bootRom(cart); busy = false; });
   if (cur && cur.state === 'inserted') {
     stopEmulator();
@@ -341,6 +344,7 @@ function ejectActive() {
   state.activeCart = null;
   ejectFlight(cur, () => {
     busy = false;
+    if (!state.activeCart) setPlaying(false);
   });
 }
 
@@ -578,6 +582,24 @@ document.getElementById('btnImport').addEventListener('click', (e) => {
 document.getElementById('btnEject').addEventListener('click', (e) => { ejectActive(); e.currentTarget.blur(); });
 document.getElementById('btnSave').addEventListener('click', (e) => { saveState(); e.currentTarget.blur(); });
 document.getElementById('btnLoad').addEventListener('click', (e) => { loadState(); e.currentTarget.blur(); });
+
+/* ================= 自动环绕开关（默认开 · 游玩自动停 · 记忆选择） ================= */
+const btnRotate = document.getElementById('btnRotate');
+function syncRotateBtn() {
+  if (!btnRotate) return;
+  const on = isAutoRotateEnabled();
+  btnRotate.textContent = on ? '🔄 环绕：开' : '⏸ 环绕：关';
+  btnRotate.title = on ? '点击关闭3D自动环绕（打游戏时会自动暂停）' : '点击开启3D自动环绕';
+  btnRotate.setAttribute('aria-pressed', on ? 'true' : 'false');
+}
+if (btnRotate) {
+  syncRotateBtn();
+  btnRotate.addEventListener('click', (e) => {
+    setAutoRotateEnabled(!isAutoRotateEnabled());
+    syncRotateBtn();
+    e.currentTarget.blur();
+  });
+}
 
 /* ================= debug hook ================= */
 if (params.get('debug') === '1') {

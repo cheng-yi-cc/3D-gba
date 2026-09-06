@@ -5,7 +5,27 @@ import { RoundedBoxGeometry } from '../vendor/three/geometries/RoundedBoxGeometr
 
 export const params = new URLSearchParams(location.search);
 export const DEBUG = params.get('debug') === '1';
-const AUTOROT = params.get('aa') !== '0';
+// 自动巡览开关：?aa=0 强制默认关；否则读 localStorage 记忆，无记忆则默认开
+const AA_FORCE_OFF = params.get('aa') === '0';
+const STORED_ROT = (() => { try { return localStorage.getItem('gba3d-autorotate'); } catch (e) { return null; } })();
+let autoRotateEnabled = AA_FORCE_OFF ? false : (STORED_ROT === null ? true : STORED_ROT === '1');
+export const AUTOROT = autoRotateEnabled;
+let isPlaying = false;
+let dragging = false;
+export function isAutoRotateEnabled() { return autoRotateEnabled; }
+export function isPlayingGame() { return isPlaying; }
+export function setPlaying(v) {
+  isPlaying = !!v;
+  applyAutoRotate();
+}
+export function setAutoRotateEnabled(v) {
+  autoRotateEnabled = !!v;
+  try { localStorage.setItem('gba3d-autorotate', autoRotateEnabled ? '1' : '0'); } catch (e) {}
+  applyAutoRotate();
+}
+function applyAutoRotate() {
+  controls.autoRotate = autoRotateEnabled && !isPlaying && !dragging;
+}
 const YAW = parseFloat(params.get('yaw') ?? '-90') * Math.PI / 180;
 
 /* ================= renderer / scene / camera ================= */
@@ -42,16 +62,18 @@ if (params.get('tx')) controls.target.set(
   parseFloat(params.get('ty') ?? '0.32'),
   parseFloat(params.get('tz') ?? '0')
 );
-controls.autoRotate = AUTOROT;
+controls.autoRotate = autoRotateEnabled;
 controls.autoRotateSpeed = 0.45;
 let idleTimer = null;
 controls.addEventListener('start', () => {
+  dragging = true;
   controls.autoRotate = false;
   clearTimeout(idleTimer);
 });
 controls.addEventListener('end', () => {
+  dragging = false;
   clearTimeout(idleTimer);
-  idleTimer = setTimeout(() => { if (AUTOROT) controls.autoRotate = true; }, 4000);
+  idleTimer = setTimeout(() => { applyAutoRotate(); }, 4000);
 });
 
 /* ================= lights ================= */
@@ -749,6 +771,7 @@ export function insertIntoSlotInstant(cart) {
   if (cart.mesh.parent !== root) root.add(cart.mesh);
   cart.state = 'inserted';
   state.activeCart = cart;
+  setPlaying(true);
 }
 
 /* world helpers for cart flights */

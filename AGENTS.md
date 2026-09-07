@@ -32,10 +32,10 @@
 │   ├── models/
 │   │   └── gba.glb              # 唯一官方高保真 GBA 3D 展品模型（含屏幕子网格）
 │   ├── roms/
-│   │   ├── celeste.gba          # 内置开源游戏：蔚蓝经典版 (Celeste Classic GBA)
-│   │   ├── anguna.gba           # 内置开源游戏：安古纳 (Anguna: Warriors of Virtue)
-│   │   ├── goodboyadvance.gba   # 内置开源游戏：好狗星系 (Goodboy Galaxy Demo)
-│   │   ├── frogtris.gba         # 内置开源游戏：经典俄罗斯方块 (Frogtris)
+│   │   ├── apotris.gba          # 内置开源游戏：俄罗斯方块 (Apotris v4.1.0, GPL-3.0)
+│   │   ├── auntflora.gba        # 内置开源游戏：弗洛拉庄园解谜 (Aunt Flora's Mansion, 0BSD)
+│   │   ├── powder.gba           # 内置自制游戏：粉末地牢 Roguelike (POWDER r118，仅自用)
+│   │   ├── voltorb.gba          # 内置自制游戏：雷电球大逃亡72关 (Voltorb's Escape，仅自用)
 │   │   └── test3d.gba           # 备用 3D 演示 ROM
 │   ├── emulator/                # 自托管 EmulatorJS 运行时、mGBA WASM 核心与本地化配置
 │   └── vendor/three/            # 本地自托管 Three.js r185 及其扩展插件 (GLTFLoader, OrbitControls)
@@ -68,6 +68,7 @@ python -m http.server 3000
 ---
 
 - **按键坐标与拾取**：按键注册在 `buttons` 映射中，真孔坐标唯一源是 `TRUE_POS`（拾取盒与顶点分类必须同源）；若调整主机模型，需同步更新三处，避免 Raycaster 命中漂移。
+- **电源指示灯对位**：`buildPowerLed` 灯位必须由 baseColor 灯罩 UV 反推几何中心得出（已与 POWER 刻字对齐），严禁手填目测；灯球半径须 ≥ 灯罩盘半径（当前 0.011）以全覆盖。
 - **按键布局标准**：必须坚守任天堂官方硬件标准「左 B 右 A」（左下为 B 键，右上为 A 键），机身几何与模拟器序号侧严禁反转；键盘映射以 README 按键表为准（当前 J=B、K=A），改键盘不算动机身标准。
 - **外壳保护与原顶点按压**：只允许动原模型按键顶点（`classifyPressVerts` 分类 + feather 权重，肩键叠加 baseColor 颜色锁定），静息零变形；严禁永久沉降机壳顶点、严禁外加可见按键块、严禁粗糙球形距离误伤白壳。
 - **十字键四向解耦**：十字键底层已解耦为 `up`(4)、`down`(5)、`left`(6)、`right`(7) 四向独立通道与力学杠杆倾斜动力学。严禁将其回退为单一且未绑定索引的按键。

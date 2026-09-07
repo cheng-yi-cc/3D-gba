@@ -659,10 +659,11 @@ function buildScreen(rt) {
 let ledMesh = null;
 function buildPowerLed(rt) {
   ledMesh = new THREE.Mesh(
-    new THREE.SphereGeometry(0.009, 12, 12),
+    new THREE.SphereGeometry(0.011, 12, 12),
     new THREE.MeshBasicMaterial({ color: '#5a4e28' })
   );
-  ledMesh.position.set(F + 0.008, 0.298, -0.30);
+  // 灯座真孔：由 baseColor 灯罩 UV 反推几何中心 (root 局部系)，与 POWER 刻字对齐
+  ledMesh.position.set(F, 0.2993, -0.4206);
   rt.add(ledMesh);
 }
 export function setLed(on) {
@@ -703,44 +704,44 @@ function buildBag() {
   const slots = [-0.24, -0.08, 0.08, 0.24];
   const defs = [
     {
-      id: 'celeste',
-      title: 'CELESTE',
-      sub: 'CLASSIC \u00B7 JUMP & DASH',
-      desc: '蔚蓝经典版 \u00B7 平台跳跃',
-      bg: '#2b3a4e',
-      fg: '#f08080',
-      blocks: 'abcadcb',
-      romPath: './assets/roms/celeste.gba'
-    },
-    {
-      id: 'anguna',
-      title: 'ANGUNA',
-      sub: 'ARPG \u00B7 SWORD & DUNGEON',
-      desc: '安古纳 \u00B7 类塞尔达ARPG',
-      bg: '#264653',
-      fg: '#e9c46a',
-      blocks: 'cbabcbc',
-      romPath: './assets/roms/anguna.gba'
-    },
-    {
-      id: 'goodboy',
-      title: 'GOODBOY',
-      sub: 'GALAXY \u00B7 SPACE DOG',
-      desc: '好狗星系 \u00B7 探索跳跃冒险',
-      bg: '#d94f2b',
-      fg: '#f8edeb',
-      blocks: 'bacabab',
-      romPath: './assets/roms/goodboyadvance.gba'
-    },
-    {
-      id: 'frogtris',
-      title: 'FROGTRIS',
-      sub: 'PUZZLE \u00B7 FALLING BLOCKS',
-      desc: '经典俄罗斯方块 \u00B7 休闲益智',
-      bg: '#2d6a4f',
-      fg: '#d8f3dc',
+      id: 'apotris',
+      title: 'APOTRIS',
+      sub: 'PUZZLE \u00B7 14 MODES',
+      desc: '俄罗斯方块 \u00B7 14种模式',
+      bg: '#1d3557',
+      fg: '#a8dadc',
       blocks: 'abcdcba',
-      romPath: './assets/roms/frogtris.gba'
+      romPath: './assets/roms/apotris.gba'
+    },
+    {
+      id: 'auntflora',
+      title: 'AUNTFLORA',
+      sub: 'MANSION \u00B7 PUZZLE',
+      desc: '弗洛拉庄园 \u00B7 推理解谜',
+      bg: '#4a3b5c',
+      fg: '#f4e4c1',
+      blocks: 'cbabcbc',
+      romPath: './assets/roms/auntflora.gba'
+    },
+    {
+      id: 'powder',
+      title: 'POWDER',
+      sub: 'ROGUELIKE \u00B7 DUNGEON',
+      desc: '粉末地牢 \u00B7 Roguelike',
+      bg: '#2b2d42',
+      fg: '#e9c46a',
+      blocks: 'bacabab',
+      romPath: './assets/roms/powder.gba'
+    },
+    {
+      id: 'voltorb',
+      title: 'VOLTORB',
+      sub: 'ESCAPE \u00B7 72 LEVELS',
+      desc: '雷电球大逃亡 \u00B7 72关',
+      bg: '#e09f3e',
+      fg: '#3a0ca3',
+      blocks: 'abcadcb',
+      romPath: './assets/roms/voltorb.gba'
     }
   ];
   defs.forEach((d, i) => {

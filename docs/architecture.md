@@ -57,7 +57,7 @@
   5. 屏幕材质的 `emissiveMap` 与 `map` 绑定此 `CanvasTexture`，使得屏幕在 3D 空间自发光并呈现动态游戏画面。
 
 ### 2.3 卡带交互状态机与按需加载 (Cartridge State Machine & Lazy Loading)
-系统内置 4 盘各具独立贴纸与主题色的实体卡带（CELESTE、ANGUNA、GOODBOY、FROGTRIS），卡带拥有 4 个核心离散状态：
+系统内置 4 盘各具独立贴纸与主题色的实体卡带（APOTRIS、AUNTFLORA、POWDER、VOLTORB），卡带拥有 4 个核心离散状态：
 1. **BAG_IDLE（收纳包闲置）**：静置于右侧毛毡卡带包网格槽中。未游玩前仅保留元数据与相对路径 `romPath`。
 2. **HOVER / PICKED（拿起/悬浮）**：点击 3D 卡带或从工具栏快捷选单选择后，若未缓存 ROM 数据则触发异步惰性拉取（`ensureCartRom`），随后通过 Tween 平滑升起并悬停在插槽上方。
 3. **INSERTING / INSERTED（插入插槽）**：沿特定旋转与平移曲线滑入 GBA 主机背部插槽；锁定后触发 mGBA WASM 核心初始化与开机引导。

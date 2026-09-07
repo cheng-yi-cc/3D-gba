@@ -308,7 +308,7 @@ export function makeCartMesh(title, sub, bg, fg, blocks) {
 }
 
 // 真孔标定（root 局部系，与拾取同系，由 baseColor 纹理+几何反推，精度 0.001；键帽浮雕字母已按官方标准重绘：右上 A / 左下 B）
-// A/B 红键顶面圆心（直径 0.082），D-pad 十字中心（总长 0.166/臂宽 0.020），
+// A/B 红键顶面圆心（直径 0.082），D-pad 十字中心（总长 0.166/臂半宽 0.025，硬切缝），
 // Select/Start 绿键（直径 0.036，垂直同列 Z=0.3927），L/R 肩键（顶边大曲板中心）。
 const TRUE_POS = {
   a: [0.183834, 0.142394, -0.543761],
@@ -322,7 +322,7 @@ const TRUE_POS = {
 // 原模型顶点按压（忠实形状：不加任何可见块，不永久改机壳；静息零变形）
 // root 局部系：rx=S*px, ry=S*pz, rz=-S*py；前键压 -X，肩键压 -Y，D-pad 另加小倾角。
 const CHAIN_S = 1.046477198600769;
-const PRESS_DEPTH = { a: 0.0075, b: 0.0075, select: 0.006, start: 0.006, l: 0.008, r: 0.008, dpadSink: 0.005 };
+const PRESS_DEPTH = { a: 0.0075, b: 0.0075, select: 0.006, start: 0.006, l: 0.008, r: 0.008 };
 const FRONT_PX = 0.173;    // 仅凸起键顶/上侧壁，机壳平面与凹槽刻字不动
 const SHOULDER_RY = 0.295;
 let pressAttr = null, pressBase = null;
@@ -375,8 +375,9 @@ function classifyPressVerts(mesh) {
       const dSe = Math.hypot(ry - SE[1], rz - SE[2]);
       const dSt = Math.hypot(ry - ST[1], rz - ST[2]);
       const dyD = Math.abs(ry - DP[1]), dzD = Math.abs(rz - DP[2]);
-      const wV = (1 - smooth01((dzD - 0.010) / 0.002)) * (1 - smooth01((dyD - 0.083) / 0.002));
-      const wH = (1 - smooth01((dyD - 0.010) / 0.002)) * (1 - smooth01((dzD - 0.083) / 0.002));
+      // D-pad 硬切分离：全臂宽 0.025（含侧壁），0.0006 窄 feather 藏缝底，黑框权重归零静止
+      const wV = (1 - smooth01((dzD - 0.025) / 0.0006)) * (1 - smooth01((dyD - 0.083) / 0.001));
+      const wH = (1 - smooth01((dyD - 0.025) / 0.0006)) * (1 - smooth01((dzD - 0.083) / 0.001));
       const cands = [
         ['dpad', Math.max(wV, wH)],
         ['a', 1 - smooth01((dA - 0.0415) / 0.002)],
@@ -420,8 +421,9 @@ function applySinglePress(id, amt) {
   }
   pressAttr.needsUpdate = true;
 }
-const dpadCur = { ry: 0, rz: 0, sx: 0 };
+const dpadCur = { ry: 0, rz: 0 };
 function applyDpadPress() {
+  // 刚体跷跷板：整个十字架绕中心做纯旋转，无整体下沉，内部权重为1处完全刚体
   if (!pressAttr || !pressSets.dpad) return;
   const DP = TRUE_POS.dpad;
   const cx = DP[0], cy = DP[1], cz = DP[2];
@@ -436,7 +438,7 @@ function applyDpadPress() {
     const dx = rx - cx, dy = ry - cy, dz = rz - cz;
     const x1 = dx * cRz - dy * sRz, y1 = dx * sRz + dy * cRz;
     const x2 = x1 * cRy + dz * sRy, y2 = y1, z2 = -x1 * sRy + dz * cRy;
-    const ox = (x2 - dx + dpadCur.sx) * w, oy = (y2 - dy) * w, oz = (z2 - dz) * w;
+    const ox = (x2 - dx) * w, oy = (y2 - dy) * w, oz = (z2 - dz) * w;
     arr[i * 3] = bx + ox / CHAIN_S;
     arr[i * 3 + 1] = by + (-oz) / CHAIN_S;
     arr[i * 3 + 2] = bz + oy / CHAIN_S;
@@ -446,13 +448,11 @@ function applyDpadPress() {
 function updateDpadPress() {
   const tRz = (buttons['up']?.pressed ? 0.15 : 0) + (buttons['down']?.pressed ? -0.15 : 0);
   const tRy = (buttons['left']?.pressed ? -0.15 : 0) + (buttons['right']?.pressed ? 0.15 : 0);
-  const any = buttons['up']?.pressed || buttons['down']?.pressed || buttons['left']?.pressed || buttons['right']?.pressed;
-  const to = { ry: tRy, rz: tRz, sx: any ? -PRESS_DEPTH.dpadSink : 0 };
-  const from = { ry: dpadCur.ry, rz: dpadCur.rz, sx: dpadCur.sx };
+  const to = { ry: tRy, rz: tRz };
+  const from = { ry: dpadCur.ry, rz: dpadCur.rz };
   tween(70, (k) => {
     dpadCur.ry = from.ry + (to.ry - from.ry) * k;
     dpadCur.rz = from.rz + (to.rz - from.rz) * k;
-    dpadCur.sx = from.sx + (to.sx - from.sx) * k;
     applyDpadPress();
   }, null, easeOut);
 }

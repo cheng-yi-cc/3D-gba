@@ -84,9 +84,10 @@ python -m http.server 3000
 - **原因**：旧版模拟器实例未能完全卸载，或 WebAudio/OpenAL 声卡通道在后台持续保持连接。
 - **解决**：`assets/js/app.js` 现已内置 `stopEmulator()` 完整销毁管线：在拔出触发瞬间调用 `actx.close()` 释放声卡通道，断开 OpenAL sources，暂停 WASM 主循环并重置离屏 Canvas，确保音画与硬件状态在 0ms 内同步归零。
 
-### Q4: 改了 `gba.glb` 模型但预览没变化
-- **原因**：浏览器缓存了旧模型文件。
-- **解决**：更新 `assets/js/scene.js` 中模型加载 URL 的 `?v=` 版本标识，再 Ctrl+F5 硬刷新；修改贴图时还要更新内容哈希文件名及 GLB 中对应的相对 URI。预览 `dist` 时必须先重新执行 `npm run build`，否则看到的仍是上一次构建产物。
+### Q4: 更新后模型或按键动画仍是旧版
+- **原因**：浏览器可能缓存了旧脚本或旧模型；旧按键脚本配上新的独立按键模型，会出现十字键和肩键不动。
+- **线上发布**：构建自动给 `gba.glb`、`rigid-buttons.js`、`scene.js`、`app.js` 生成内容指纹文件名，并按依赖顺序更新引用。模型或刚体模块变化会传递到场景、应用和 HTML，普通刷新即可加载匹配版本。不要只给 HTML 的脚本加版本而遗漏 `app.js` 对场景的导入，否则会初始化两套场景。
+- **源码预览**：`npm run dev` 不经过构建，模型改变后仍需更新 `scene.js` 内的 `?v=` 并 Ctrl+F5。预览 `dist` 时先重新执行 `npm run build`。修改贴图时还要更新贴图内容哈希文件名及 GLB 中对应的相对 URI。
 
 ---
 
@@ -94,7 +95,7 @@ python -m http.server 3000
 
 - **项目**：Cloudflare Pages `gba`（`gba-9cq.pages.dev`，自定义域 `gba.chengyi.me`），Git 直连 `cheng-yi-cc/3D-gba`。
 - **自动部署**：生产分支 `master`，`push` 到 `master` 自动触发 Production 构建并上线；框架预设无，构建命令 `npm run build`，输出目录 `dist`，根目录为仓库根目录。构建配置在 Cloudflare Pages 项目设置中维护。
-- **发布内容**：`scripts/build.cjs` 只复制 `index.html`、`_headers`、`assets/`，保留目录结构与跨域隔离响应头；`node_modules`、文档、开发脚本和本地临时文件不会发布。`dist` 是忽略提交的生成目录，每次构建重建；脚本只使用 Node.js 内置模块。
+- **发布内容**：`scripts/build.cjs` 只发布 `index.html`、`_headers`、`assets/`，保留目录结构与跨域隔离响应头；模型和三个应用模块使用自动生成的内容指纹文件名。几何与贴图字节不变，模块只更新资源引用；`node_modules`、文档、开发脚本和本地临时文件不会发布。`dist` 是忽略提交的生成目录，每次构建重建；脚本只使用 Node.js 内置模块。
 - **发布前检查**：先运行 `npm run build`。任何文件超过 25 MiB，或文件数超过免费方案 20,000 上限时，构建会明确报错并退出。需要预览实际产物时运行 `python -m http.server 3000 --directory dist`，打开 [http://localhost:3000](http://localhost:3000)。
 - **仓库**：`origin` 使用 `https://github.com/cheng-yi-cc/3D-gba.git`。
 - **验证**：push 后确认该 commit 的 GitHub `Cloudflare Pages` 检查成功，并到 Pages 部署页确认 Production 部署引用相同 commit；随后检查域名上的 HTML、脚本、模型和四张贴图均已更新，并在浏览器确认展厅、插卡与游戏画面正常。只看到首页 HTTP 200 不能证明新版本已上线，失败时域名通常仍提供上一次成功版本。

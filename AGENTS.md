@@ -27,7 +27,7 @@
 3Dgad/
 ├── index.html                   # 主页面入口，含 DOM 容器与 UI 控件
 ├── package.json                 # 依赖声明与 npm 脚本 (npm run dev)
-├── scripts/build.cjs            # 发布前体积检查，复制静态资源到 dist
+├── scripts/build.cjs            # 体积检查，模型/应用模块内容指纹与 dist 生成
 ├── assets/
 │   ├── js/
 │   │   ├── scene.js             # Three.js 3D 场景、光照、模型加载、卡带动画与屏幕纹理

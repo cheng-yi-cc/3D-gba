@@ -90,9 +90,17 @@ python -m http.server 3000
 
 ---
 
-## 5. 线上部署（Cloudflare Pages，已接通）
+## 5. 线上部署（Cloudflare Pages）
 
 - **项目**：Cloudflare Pages `gba`（`gba-9cq.pages.dev`，自定义域 `gba.chengyi.me`），Git 直连 `cheng-yi-cc/3D-gba`。
-- **自动部署**：生产分支 `master`，`push` 到 `master` 自动触发 Production 构建并上线；构建配置：框架预设无、构建命令空、输出目录 `/`（纯静态，无需构建）。
+- **自动部署**：生产分支 `master`，`push` 到 `master` 自动触发 Production 构建并上线；框架预设无，构建命令 `npm run build`，输出目录 `dist`，根目录为仓库根目录。构建配置在 Cloudflare Pages 项目设置中维护。
+- **发布内容**：`scripts/build.cjs` 只复制 `index.html`、`_headers`、`assets/`，保留目录结构与跨域隔离响应头；`node_modules`、文档、开发脚本和本地临时文件不会发布。`dist` 是忽略提交的生成目录，每次构建重建；脚本只使用 Node.js 内置模块。
+- **发布前检查**：先运行 `npm run build`。任何文件超过 25 MiB，或文件数超过免费方案 20,000 上限时，构建会明确报错并退出。需要预览实际产物时运行 `python -m http.server 3000 --directory dist`，打开 [http://localhost:3000](http://localhost:3000)。
 - **仓库**：`origin` 使用 `https://github.com/cheng-yi-cc/3D-gba.git`。
-- **验证**：push 后到 Pages 项目 → 部署页确认出现对应 commit 的 Production 部署，再 `curl` 线上 HTML 确认内容已更新。
+- **验证**：push 后确认该 commit 的 GitHub `Cloudflare Pages` 检查成功，并到 Pages 部署页确认 Production 部署引用相同 commit；随后检查域名上的 HTML、脚本、模型和四张贴图均已更新，并在浏览器确认展厅、插卡与游戏画面正常。只看到首页 HTTP 200 不能证明新版本已上线，失败时域名通常仍提供上一次成功版本。
+
+### 2026-09-08 部署失败原因与修复
+
+提交 `25bafb8` 的构建日志明确报错：`Pages only supports files up to 25 MiB in size`，其中 `assets/models/gba.glb is 25.3 MiB in size`。独立按键拆分后模型增至 26,523,368 字节，超过 26,214,400 字节上限，失败发生在上传前的资源校验；GitHub 自动触发和域名绑定正常。
+
+修复将 GLB 内嵌的四张 PNG 原字节移到 `assets/models/textures/`，模型通过相对路径加载。GLB 降至 1,990,100 字节，最大贴图 10,334,854 字节，无需图片压缩、降低模型精度或外部存储服务。模型的节点、材质、几何缓冲、UV 与四张 PNG 字节均已核对不变。后续不能只复制 `gba.glb` 而遗漏配套贴图，也不要重新导出成超过上限的单文件。

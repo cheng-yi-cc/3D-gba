@@ -25,13 +25,15 @@
 3Dgad/
 ├── index.html                   # 主页面入口，含 DOM 容器与 UI 控件
 ├── package.json                 # 依赖声明与 npm 脚本 (npm run dev)
+├── scripts/build.cjs            # 发布前体积检查，复制静态资源到 dist
 ├── assets/
 │   ├── js/
 │   │   ├── scene.js             # Three.js 3D 场景、光照、模型加载、卡带动画与屏幕纹理
 │   │   ├── rigid-buttons.js     # 十字键、L/R 独立刚体支点与阻尼运动
 │   │   └── app.js               # 模拟器桥接 (EmulatorJS)、按键映射、WebAudio 音效、状态存储
 │   ├── models/
-│   │   └── gba.glb              # 项目主机模型（含独立十字键、L/R 肩键）
+│   │   ├── gba.glb              # 项目主机模型（含独立十字键、L/R 肩键）
+│   │   └── textures/            # 四张原始 PNG，通过模型相对 URI 加载
 │   ├── roms/
 │   │   ├── apotris.gba          # 内置开源游戏：俄罗斯方块 (Apotris v4.1.0, GPL-3.0)
 │   │   ├── auntflora.gba        # 内置开源游戏：弗洛拉庄园解谜 (Aunt Flora's Mansion, 0BSD)
@@ -53,6 +55,9 @@
 # 启动本地开发与预览服务（默认端口 3000）
 npm run dev
 
+# 构建并检查 Cloudflare Pages 发布资源（输出 dist）
+npm run build
+
 # 使用 Python 备用启动
 python -m http.server 3000
 ```
@@ -60,6 +65,8 @@ python -m http.server 3000
 ---
 
 ## 4. 深入文档指针
+
+生产分支为 `master`，推送到 GitHub 后由 Cloudflare Pages 执行 `npm run build` 并发布 `dist` 到 `gba.chengyi.me`。单文件不得超过 25 MiB；模型与 `assets/models/textures/` 中的四张 PNG 必须一起提交和发布，贴图文件名含内容哈希。不得重新合并为超限 GLB，也不得为缩小文件而牺牲原贴图或几何精度。
 
 | 文档 | 包含内容 | 适用场景 |
 |---|---|---|

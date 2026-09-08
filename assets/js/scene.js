@@ -391,7 +391,7 @@ function vertexRelease(id, dur) {
     applySinglePress(id, a);
   }, null, easeOut);
 }
-new GLTFLoader().load('./assets/models/gba.glb?v=20260908-rigid', (g) => {
+new GLTFLoader().load('./assets/models/gba.glb?v=20260908-textures', (g) => {
   root = g.scene;
   root.updateMatrixWorld(true);
 

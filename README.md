@@ -38,7 +38,7 @@
 # 在项目根目录启动本地服务（需要 Node.js/npm）
 npm run dev
 ```
-脚本使用 `npx serve`，首次运行可能联网下载。Three.js 和模拟器运行资源均已随项目提供，不需要构建。
+脚本使用 `npx serve`，首次运行可能联网下载。Three.js 和模拟器运行资源均已随项目提供，本地开发不需要构建。
 
 启动后在浏览器打开：[http://localhost:3000](http://localhost:3000)
 
@@ -47,6 +47,23 @@ npm run dev
 python -m http.server 3000
 ```
 浏览器访问：[http://localhost:3000](http://localhost:3000)
+
+---
+
+## 自动部署
+
+推送到 GitHub 的 `master` 后，Cloudflare Pages 项目 `gba` 自动执行 `npm run build`，发布 `dist` 到 [gba.chengyi.me](https://gba.chengyi.me/)。构建脚本只复制 `index.html`、`_headers` 和 `assets/`，并检查 Pages 的单文件 25 MiB 和免费方案 20,000 文件上限，不打包或改写运行代码。
+
+模型 `assets/models/gba.glb` 与 `assets/models/textures/` 下的四张 PNG 必须一起提交。贴图按原字节拆出，未压缩或降采样，文件名含内容哈希。修改模型或贴图后，先运行 `npm run build`，再提交并推送；部署状态应以对应提交的 Cloudflare Pages 检查结果为准。
+
+预览实际发布产物：
+
+```bash
+npm run build
+python -m http.server 3000 --directory dist
+```
+
+打开 [http://localhost:3000](http://localhost:3000)。详细配置和故障记录见 [运维手册](./docs/runbook.md#5-线上部署cloudflare-pages)。
 
 ---
 

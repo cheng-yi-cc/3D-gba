@@ -1,5 +1,9 @@
 # Localization
 
+## 本项目的本地语言文件
+
+本目录文件名使用 `zh.json`、`en.json` 等短代码。`loader.js` 按 `EJS_language`（未设置时按浏览器 locale）原样拼接文件名，不会自动把 `zh-CN` 转成 `zh`。显式选择简体中文可在加载模拟器前设置 `window.EJS_language = 'zh'`；语言文件缺失时退回英语。下方语言地区标识为上游说明，不代表本目录存在同名文件。
+
 Supported languages
 
 `en.json`: `en-US` - English (US)<br>
@@ -54,7 +58,7 @@ Translated for `ur-PK` by [@hassanraza2000](https://github.com/hassanraza2000) <
 
 ## Contributing
 
-To contribute, please download the default `en-US.json` language file to use as a template, translate the strings and then submit the file with a Pull Request or Issue.
+To contribute, use the bundled `en.json` language file as a template, translate the strings and then submit the file with a Pull Request or Issue.
 
 The EmulatorJS team will review and add your changes.
 

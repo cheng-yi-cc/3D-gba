@@ -16,6 +16,8 @@
    模型、贴图、脚本和 WASM 核心加载必须使用相对路径（如 `./assets/models/gba.glb`），以确保在任意子路径或静态托管服务下均能正常解析。
 5. **本地开发严禁使用 `file://` 协议打开**：
    必须通过 HTTP 本地服务器启动（如 `npm run dev`），以避免浏览器 CORS 拦截 ES Module 与 WASM 资源。
+6. **发布资源与体积约束**：
+   生产分支为 `master`，推送后由 Cloudflare Pages 执行 `npm run build` 并发布 `dist`。单文件不得超过 25 MiB；`gba.glb` 与 `assets/models/textures/` 必须一起提交，贴图改变时更新内容哈希文件名和模型引用。不得合并为超限 GLB 或牺牲原贴图、几何精度。
 
 ---
 
@@ -66,12 +68,10 @@ python -m http.server 3000
 
 ## 4. 深入文档指针
 
-生产分支为 `master`，推送到 GitHub 后由 Cloudflare Pages 执行 `npm run build` 并发布 `dist` 到 `gba.chengyi.me`。单文件不得超过 25 MiB；模型与 `assets/models/textures/` 中的四张 PNG 必须一起提交和发布，贴图文件名含内容哈希。不得重新合并为超限 GLB，也不得为缩小文件而牺牲原贴图或几何精度。
-
 | 文档 | 包含内容 | 适用场景 |
 |---|---|---|
 | [`docs/architecture.md`](./docs/architecture.md) | 3D 渲染管线、卡带状态机、屏幕桥接细节、WebAudio 合成实现 | 修改核心交互或重构模块时 |
-| [`docs/runbook.md`](./docs/runbook.md) | URL 调试参数列表、测试验证流程、常见报错排查 | 遇到加载异常或调整相机参数时 |
+| [`docs/runbook.md`](./docs/runbook.md) | 本地预览、调试参数、验证流程、自动部署配置与故障排查 | 调试、发布或排查部署失败时 |
 
 ---
 

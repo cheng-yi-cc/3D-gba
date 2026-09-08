@@ -15,7 +15,7 @@ npm run dev
 # 或
 npm run preview
 ```
-需要 Node.js/npm；脚本通过 `npx serve` 启动，首次运行可能联网下载 `serve`。若不可用，使用下方已安装的 Python。
+需要 Node.js/npm；脚本通过 `npx serve` 启动，首次运行可能联网下载 `serve`。若不可用，可使用已安装的 Python，按下方命令启动。`npm run preview` 与 `npm run dev` 都服务于源码根目录，不是 `dist`。
 
 终端输出后，浏览器访问：[http://localhost:3000](http://localhost:3000)
 
@@ -30,7 +30,7 @@ python -m http.server 3000
 
 ## 2. 功能调试与 URL 参数
 
-`assets/js/scene.js` 提供了多项 URL 查询参数，方便视觉调试与相机定位：
+`assets/js/scene.js` 提供巡览与相机查询参数，`assets/js/app.js` 根据 `debug` 暴露调试接口：
 
 | 参数名 | 默认值 | 作用说明 | 示例 |
 |---|---|---|---|
@@ -38,7 +38,7 @@ python -m http.server 3000
 | `aa` | `1` | 设为 `0` 时默认关闭相机空闲自动巡览（页面底部工具栏「🔄 环绕」可随时手动开关，选择记入 localStorage；插入卡带游玩时自动暂停，拔卡后恢复） | `?aa=0` |
 | `yaw` | `-90` | 主机初始偏航角（度） | `?yaw=-90` |
 | `cx,cy,cz`| `0.1, 0.78, 3.15` | 相机初始位置坐标 | `?cx=0&cy=1&cz=3` |
-| `tx,ty,tz`| `0.15, 0.32, 0` | 轨道相机注视中心点（Target）坐标 | `?tx=0&ty=0.3&tz=0` |
+| `tx,ty,tz`| `0.15, 0.32, 0` | 轨道相机注视中心点（Target）坐标；必须提供 `tx` 才会应用 `ty`、`tz` | `?tx=0&ty=0.3&tz=0` |
 
 ---
 
@@ -86,7 +86,7 @@ python -m http.server 3000
 
 ### Q4: 改了 `gba.glb` 模型但预览没变化
 - **原因**：浏览器缓存了旧模型文件。
-- **解决**：同步 bump `assets/js/scene.js` 里模型加载 URL 的 `?v=` 查询串（如 `gba.glb?v=20260908-rigid`），然后 Ctrl+F5 硬刷新。
+- **解决**：更新 `assets/js/scene.js` 中模型加载 URL 的 `?v=` 版本标识，再 Ctrl+F5 硬刷新；修改贴图时还要更新内容哈希文件名及 GLB 中对应的相对 URI。预览 `dist` 时必须先重新执行 `npm run build`，否则看到的仍是上一次构建产物。
 
 ---
 
@@ -99,8 +99,12 @@ python -m http.server 3000
 - **仓库**：`origin` 使用 `https://github.com/cheng-yi-cc/3D-gba.git`。
 - **验证**：push 后确认该 commit 的 GitHub `Cloudflare Pages` 检查成功，并到 Pages 部署页确认 Production 部署引用相同 commit；随后检查域名上的 HTML、脚本、模型和四张贴图均已更新，并在浏览器确认展厅、插卡与游戏画面正常。只看到首页 HTTP 200 不能证明新版本已上线，失败时域名通常仍提供上一次成功版本。
 
+`_headers` 由 Cloudflare Pages 解析；普通 `serve` 和 Python HTTP 服务不会自动应用它。两种本地预览可验证资源和交互，线上 COOP/COEP 响应头则需在部署后核对。`dist` 和 `.wrangler` 均为忽略提交的生成或临时目录，收尾可删除，下次预览发布产物前重新构建。
+
 ### 2026-09-08 部署失败原因与修复
 
 提交 `25bafb8` 的构建日志明确报错：`Pages only supports files up to 25 MiB in size`，其中 `assets/models/gba.glb is 25.3 MiB in size`。独立按键拆分后模型增至 26,523,368 字节，超过 26,214,400 字节上限，失败发生在上传前的资源校验；GitHub 自动触发和域名绑定正常。
 
 修复将 GLB 内嵌的四张 PNG 原字节移到 `assets/models/textures/`，模型通过相对路径加载。GLB 降至 1,990,100 字节，最大贴图 10,334,854 字节，无需图片压缩、降低模型精度或外部存储服务。模型的节点、材质、几何缓冲、UV 与四张 PNG 字节均已核对不变。后续不能只复制 `gba.glb` 而遗漏配套贴图，也不要重新导出成超过上限的单文件。
+
+修复提交 `28b1f89` 已由 `github:push` 触发 Production 部署并成功上线；域名上的 12 项关键资源与提交内容一致，COOP/COEP 响应头正确，本地及线上 Apotris 插卡画面均已验证。

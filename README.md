@@ -54,9 +54,9 @@ python -m http.server 3000
 
 推送到 GitHub 的 `master` 后，Cloudflare Pages 项目 `gba` 自动执行 `npm run build`，发布 `dist` 到 [gba.chengyi.me](https://gba.chengyi.me/)。构建脚本只复制 `index.html`、`_headers` 和 `assets/`，并检查 Pages 的单文件 25 MiB 和免费方案 20,000 文件上限，不打包或改写运行代码。
 
-模型 `assets/models/gba.glb` 与 `assets/models/textures/` 下的四张 PNG 必须一起提交。贴图按原字节拆出，未压缩或降采样，文件名含内容哈希。修改模型或贴图后，先运行 `npm run build`，再提交并推送；部署状态应以对应提交的 Cloudflare Pages 检查结果为准。
+模型 `assets/models/gba.glb` 与 `assets/models/textures/` 下的四张 PNG 必须一起提交。贴图按原字节拆出，未重新编码或降采样，文件名含内容哈希。修改模型或贴图后，先运行 `npm run build`，再提交并推送；部署状态应以对应提交的 Cloudflare Pages 检查结果为准。
 
-预览实际发布产物：
+预览实际发布产物（`npm run preview` 服务于源码目录；`dist` 删除或源码变化后需重新构建）：
 
 ```bash
 npm run build

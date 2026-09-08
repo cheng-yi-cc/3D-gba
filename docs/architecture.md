@@ -27,7 +27,7 @@
 |  - 键盘事件 / 3D Raycast 映射           - 开机双音频 (boot)             |
 |                                                                         |
 |  [ 存储子系统 ]                                                         |
-|  - IndexedDB (EmulatorJS 存档管理) / 手动导出导入 .sav                 |
+|  - IndexedDB gba3d / states（按 ROM 文件名保存即时状态）                 |
 +-------------------------------------------------------------------------+
 ```
 
@@ -39,7 +39,7 @@
 - **渲染器配置**：
   - `WebGLRenderer({ antialias: true })`
   - 色调映射：`ACESFilmicToneMapping`，曝光度 `1.06`
-  - 阴影：`PCFSoftShadowMap`，带偏置与模糊半径处理，呈现柔和阴影。
+  - 阴影：代码配置 `PCFSoftShadowMap`，本地 Three.js r185 会提示弃用并回退为 `PCFShadowMap`。
 - **打光方案**：
   - 半球光（`HemisphereLight`）：提供温暖的天空底光与地面反光。
   - 主光源（`DirectionalLight`）：高位斜射，开启 2048x2048 阴影投影。
@@ -50,22 +50,20 @@
 
 ### 2.2 屏幕动态纹理桥接 (Screen Dynamic Texture Bridge)
 - **原理**：
-  1. GBA 屏幕网格对应模型中的屏幕子材质。
+  1. `buildScreen` 在机身屏幕位置添加三维平面，覆盖模型原有的静态画面，并叠加透明保护镜片。
   2. 初始化时创建高分辨率离屏 2D Canvas（`screenCanvas`，尺寸 480x320，精确对应 GBA 240x160 的 2x 缩放）。
-  3. 未插卡/关机状态下，`screenCtx` 绘制微弱反光的关闭液晶屏底色与液晶网格微纹理。
+  3. 未插卡/关机状态下，`drawBootArt` 绘制深绿色待机画面、像素网格和插卡提示。
   4. 插入卡带且模拟器初始化后，每帧（`onFrame`）从 EmulatorJS 渲染的目标 Canvas 提取画面数据，拷贝至 `screenCanvas` 并标记 `screenTex.needsUpdate = true`。
-  5. 屏幕材质的 `emissiveMap` 与 `map` 绑定此 `CanvasTexture`，使得屏幕在 3D 空间自发光并呈现动态游戏画面。
+  5. 三维屏幕使用 `MeshBasicMaterial({ map: screenTex })`，不受场景灯光明暗影响；未使用 `emissiveMap`。
 
 ### 2.3 卡带交互状态机与按需加载 (Cartridge State Machine & Lazy Loading)
-系统内置 4 盘各具独立贴纸与主题色的实体卡带（APOTRIS、AUNTFLORA、POWDER、VOLTORB），卡带拥有 4 个核心离散状态：
-1. **BAG_IDLE（收纳包闲置）**：静置于右侧毛毡卡带包网格槽中。未游玩前仅保留元数据与相对路径 `romPath`。
-2. **HOVER / PICKED（拿起/悬浮）**：点击 3D 卡带或从工具栏快捷选单选择后，若未缓存 ROM 数据则触发异步惰性拉取（`ensureCartRom`），随后通过 Tween 平滑升起并悬停在插槽上方。
-3. **INSERTING / INSERTED（插入插槽）**：沿特定旋转与平移曲线滑入 GBA 主机背部插槽；锁定后触发 mGBA WASM 核心初始化与开机引导。
-4. **EJECTING（弹出即断电）**：按下弹出按钮、点击已插入卡带或换卡时，在触发的第 0 毫秒（$t=0$）立即触发模拟器强制下电机制：
-   - 全局 WebAudio 沙箱同步调用 `suspend()` 和 `close()` 彻底释放模拟器声卡通道，断开 OpenAL 源节点；
-   - 调用 `toggleMainLoop(0)` 与 `pauseMainLoop()` 挂起 WASM 主循环，不再占用 CPU；
-   - 递增 `currentSessionId` 作废挂起的异步资源加载，防止空机唤醒；
-   - 主机电源 LED 熄灭，屏幕即刻复位至待机画面（`drawBootArt`），卡带沿拟真物理抛物线平滑飞回收纳包。
+系统内置 APOTRIS、AUNTFLORA、POWDER、VOLTORB 四盘卡带，`cart.state` 的实际取值只有 `bag`、`flight`、`inserted`：
+
+1. `bag`：卡带在收纳包内，内置 ROM 首次游玩时由 `ensureCartRom` 从相对路径加载并缓存到内存。
+2. `flight`：`insertFlight` 或 `ejectFlight` 正在移动卡带；`busy` 防止并发插拔。插入过程先抬升、旋转对位，再落入插槽。
+3. `inserted`：记录 `state.activeCart`，调用 `bootRom` 初始化模拟器，并暂停自动巡览。
+
+拔卡和换卡在启动飞行动画前同步调用 `stopEmulator()`：递增会话编号使旧启动回调失效，暂停 WASM 主循环，关闭或挂起捕获的模拟器音频上下文，销毁模拟器、清空挂载点、熄灭指示灯并恢复待机画面。卡带飞回收纳包后恢复 `bag` 和允许的自动巡览状态。
 
 ### 2.4 WebAudio 合成音效引擎 (SFX Engine)
 为了避免加载外部音频文件带来的网络延迟或 404 隐患，系统采用 Web Audio API 进行纯代码合成：
@@ -86,7 +84,19 @@
   - **防卡键保护**：绑定 `window.blur`，切屏或失焦时自动复位所有按键状态，防止角色在模拟器中死循环奔跑。
   - **3D 实体按键交互与拓扑架构**：
     - 硬件键位标准：按键排布严格恪守任天堂官方掌机硬件标准「左 B 右 A」（左下为 B 键，右上为 A 键）。
-    - 按键拓扑隔离与原顶点按压：不再外加可见按键块，不永久沉降机壳；加载时按真孔位置给原模型按键顶点分类并记录 feather 权重（含肩键 baseColor 颜色锁定，白壳权重为 0），静息零变形，按压时只有原按键几何下沉/倾斜。键帽 A/B 浮雕刻字只存在 normal 贴图里（baseColor 与几何顶点上没有），改键帽字母必须重绘 normal 贴图对应 UV 岛，禁止动顶点。
-    - 四向机械摇杆：十字移动键配备 0.15 rad 四向机械倾角的纯旋转刚体跷跷板（无整体下沉，中心不动、按压臂下沉对侧翘起），顶点分类按实测臂半宽 0.025 沿红线硬切、黑框权重归零，静息零变形。
-    - A/B 键、肩键与系统键具有专属下陷动画与 WebAudio 触觉音效联动；
+    - 原模型按拓扑拆分：`gba.glb` 内的 `Button_DPad`、`Button_L`、`Button_R` 是独立网格，保留原表面位置、法线、切线、UV 和贴图。十字键沿 88 条原凹槽边形成的闭环与外框断开，键体及固定框补有暗色内壁。黑框留在机身网格，`DPad_FrameInterior` 固定不动。
+    - `assets/js/rigid-buttons.js` 在 `TRUE_POS` 对应位置建立支点，用 `attach` 保持静息世界变换，再以整个对象的旋转驱动键体；顶点缓冲从不随十字键或肩键输入改写，法线随刚体一起旋转。
+    - 十字键绕中心下方的支点倾斜，四向仍独立映射，斜向合成后总倾角上限为 0.085 rad，相反方向相消。L/R 的 X 转轴通过各自内侧端，铰链高度由端部几何范围求得，两侧转向相反，最外端名义行程为 root 局部单位 0.008。
+    - 运动采用临界阻尼弹簧解析解，连续保留速度；快速松按、换向不会产生旧 tween 覆盖。接近静息时精确归零。拾取体挂在同一支点下，与实体保持对位。
+    - A/B、Select/Start 继续使用 `classifyPressVerts` 与原有按压通道；它们的输入映射和 WebAudio 触觉音效保持现有行为。A/B 浮雕位于 normal 贴图，修改字母仍需编辑对应 UV 岛。
     - 右上角常驻半透明速查卡片（`#cheatSheet`）与键盘敲击实时高亮联动，支持一键最小化折叠。
+
+### 2.6 模型维护
+
+原始 30,949 个表面三角形完整分配为：机身/黑框 22,811，十字键 1,362，L/R 各 3,388；另增加 352 个内壁三角形。原贴图二进制数据不重采样。
+
+交付的 `gba.glb` 已完成拆分，运行不需要 Python、NumPy 或生成脚本。更新模型时保留具名部件及固定内壁，重新核对真孔位置、铰链、拾取和松键归位；手动检查步骤见 [运维手册](./runbook.md)。
+
+### 2.7 存档
+
+工具栏存档调用模拟器的 `getState()`，写入本应用 IndexedDB 数据库 `gba3d` 的 `states` 对象仓库，以 ROM 文件名为键。读档取回该状态并调用 `loadState()`。同名 ROM 共用存档键；存档属于当前浏览器和站点来源，清除站点数据会丢失。工具栏不提供 `.sav` 文件导入或导出。

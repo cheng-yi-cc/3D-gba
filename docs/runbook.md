@@ -15,6 +15,8 @@ npm run dev
 # 或
 npm run preview
 ```
+需要 Node.js/npm；脚本通过 `npx serve` 启动，首次运行可能联网下载 `serve`。若不可用，使用下方已安装的 Python。
+
 终端输出后，浏览器访问：[http://localhost:3000](http://localhost:3000)
 
 ### 方式二：使用 Python 一键托管
@@ -32,7 +34,7 @@ python -m http.server 3000
 
 | 参数名 | 默认值 | 作用说明 | 示例 |
 |---|---|---|---|
-| `debug` | `0` | 设为 `1` 时显示辅助坐标系、按键碰撞盒包围盒与调试信息 | `?debug=1` |
+| `debug` | `0` | 设为 `1` 时在 `window.G3DTEST` 暴露模拟器、卡带、按键与屏幕采样调试接口；不显示碰撞盒 | `?debug=1` |
 | `aa` | `1` | 设为 `0` 时默认关闭相机空闲自动巡览（页面底部工具栏「🔄 环绕」可随时手动开关，选择记入 localStorage；插入卡带游玩时自动暂停，拔卡后恢复） | `?aa=0` |
 | `yaw` | `-90` | 主机初始偏航角（度） | `?yaw=-90` |
 | `cx,cy,cz`| `0.1, 0.78, 3.15` | 相机初始位置坐标 | `?cx=0&cy=1&cz=3` |
@@ -58,6 +60,16 @@ python -m http.server 3000
 
 ---
 
+### 独立按键专项检查
+
+打开 [关闭巡览的本地预览](http://localhost:3000/?aa=0)，放大主机，依次测试 WASD、W+A、S+D、U、I 和 U+I。十字键的外框与白壳保持不动；键帽整体倾斜，肩键绕内侧端转动。快速交替按键、松开以及切出浏览器后应顺滑归位，无残留按压。鼠标点击四个方向和两颗肩键应与键盘对应。
+
+模型必须带有 `Button_DPad`、`Button_L`、`Button_R`、`DPad_FrameInterior` 四个具名节点；缺失时更新模型，不应退回逐顶点变形。交付模型已拆分，不需要额外生成步骤。
+
+`npm test` 目前是失败占位脚本，不作为验收命令。修改按键后按上述步骤验证，必要时检查网格属性缓冲不变、固定框/机壳矩阵不变、刚体边长不变和松键精确归位。
+
+---
+
 ## 4. 常见故障排查 (Troubleshooting)
 
 ### Q1: 页面全白或控制台报错 `Failed to fetch` / `CORS request not HTTP`
@@ -74,7 +86,7 @@ python -m http.server 3000
 
 ### Q4: 改了 `gba.glb` 模型但预览没变化
 - **原因**：浏览器缓存了旧模型文件。
-- **解决**：同步 bump `assets/js/scene.js` 里模型加载 URL 的 `?v=` 查询串（如 `gba.glb?v=20260905`），然后 Ctrl+F5 硬刷新。
+- **解决**：同步 bump `assets/js/scene.js` 里模型加载 URL 的 `?v=` 查询串（如 `gba.glb?v=20260908-rigid`），然后 Ctrl+F5 硬刷新。
 
 ---
 
@@ -82,5 +94,5 @@ python -m http.server 3000
 
 - **项目**：Cloudflare Pages `gba`（`gba-9cq.pages.dev`，自定义域 `gba.chengyi.me`），Git 直连 `cheng-yi-cc/3D-gba`。
 - **自动部署**：生产分支 `master`，`push` 到 `master` 自动触发 Production 构建并上线；构建配置：框架预设无、构建命令空、输出目录 `/`（纯静态，无需构建）。
-- **注意**：GitHub 仓库已由 `3Dgad` 改名为 `3D-gba`，本地 `origin` 已同步为新地址；旧地址经 GitHub 重定向仍可用，但请统一用新地址。
+- **仓库**：`origin` 使用 `https://github.com/cheng-yi-cc/3D-gba.git`。
 - **验证**：push 后到 Pages 项目 → 部署页确认出现对应 commit 的 Production 部署，再 `curl` 线上 HTML 确认内容已更新。

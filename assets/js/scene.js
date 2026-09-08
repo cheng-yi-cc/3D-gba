@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { OrbitControls } from '../vendor/three/controls/OrbitControls.js';
 import { GLTFLoader } from '../vendor/three/loaders/GLTFLoader.js';
 import { RoundedBoxGeometry } from '../vendor/three/geometries/RoundedBoxGeometry.js';
+import { createButtonRig } from './rigid-buttons.js';
 
 export const params = new URLSearchParams(location.search);
 export const DEBUG = params.get('debug') === '1';
@@ -200,6 +201,7 @@ export const gbaLean = new THREE.Group();
 gba.add(gbaLean);
 
 export let root = null;
+export let buttonRig = null;
 export const buttons = {};   /* name -> {index, group, press(), release(), meshes[]} */
 export const carts = [];     /* cart objects */
 export const state = { activeCart: null };
@@ -319,52 +321,23 @@ const TRUE_POS = {
   l: [0.0776, 0.360519, 0.469188],
   r: [0.0797, 0.359695, -0.467844]
 };
-// 原模型顶点按压（忠实形状：不加任何可见块，不永久改机壳；静息零变形）
-// root 局部系：rx=S*px, ry=S*pz, rz=-S*py；前键压 -X，肩键压 -Y，D-pad 另加小倾角。
+// A/B 与 Select/Start 保留原顶点按压；十字键与肩键由具名独立网格驱动。
+// root 局部系：rx=S*px, ry=S*pz, rz=-S*py；前键压 -X。
 const CHAIN_S = 1.046477198600769;
-const PRESS_DEPTH = { a: 0.0075, b: 0.0075, select: 0.006, start: 0.006, l: 0.008, r: 0.008 };
+const PRESS_DEPTH = { a: 0.0075, b: 0.0075, select: 0.006, start: 0.006 };
 const FRONT_PX = 0.173;    // 仅凸起键顶/上侧壁，机壳平面与凹槽刻字不动
-const SHOULDER_RY = 0.295;
 let pressAttr = null, pressBase = null;
 const pressSets = {};
 function smooth01(x) { x = Math.min(1, Math.max(0, x)); return x * x * (3 - 2 * x); }
-// 肩键颜色锁定：只让黑色肩键板动，白色外壳权重归零（采样 baseColor，2048 一次性读入）
-let shoulderSampler = null;
-function getShoulderSampler(mesh) {
-  if (shoulderSampler) return shoulderSampler;
-  try {
-    const img = mesh.material?.map?.image;
-    const uv = mesh.geometry?.attributes?.uv;
-    if (!img || !uv || !img.width) return null;
-    const S = Math.min(2048, img.naturalWidth || img.width);
-    const cv = document.createElement('canvas');
-    cv.width = S; cv.height = S;
-    const g = cv.getContext('2d', { willReadFrequently: true });
-    g.drawImage(img, 0, 0, S, S);
-    const d = g.getImageData(0, 0, S, S).data;
-    shoulderSampler = { data: d, S };
-    return shoulderSampler;
-  } catch (e) { return null; }
-}
-function shoulderDark(i, uvAttr, samp) {
-  const u = uvAttr.getX(i), v = uvAttr.getY(i);
-  const x = Math.min(samp.S - 1, Math.max(0, (u * samp.S) | 0));
-  const y = Math.min(samp.S - 1, Math.max(0, (v * samp.S) | 0));
-  const o = (y * samp.S + x) * 4;
-  const bright = (samp.data[o] + samp.data[o + 1] + samp.data[o + 2]) / 3;
-  return 1 - smooth01((bright - 110) / 40);
-}
 function classifyPressVerts(mesh) {
   const pos = mesh.geometry?.attributes?.position;
   if (!pos) return;
   pressAttr = pos;
   pressBase = new Float32Array(pos.array);
-  const uvAttr = mesh.geometry?.attributes?.uv;
-  const samp = (uvAttr && mesh.material?.map?.image) ? getShoulderSampler(mesh) : null;
-  const buckets = { a: [], b: [], select: [], start: [], l: [], r: [], dpad: [] };
-  const bws = { a: [], b: [], select: [], start: [], l: [], r: [], dpad: [] };
-  const A = TRUE_POS.a, B = TRUE_POS.b, DP = TRUE_POS.dpad;
-  const SE = TRUE_POS.select, ST = TRUE_POS.start, L = TRUE_POS.l, R = TRUE_POS.r;
+  const buckets = { a: [], b: [], select: [], start: [] };
+  const bws = { a: [], b: [], select: [], start: [] };
+  const A = TRUE_POS.a, B = TRUE_POS.b;
+  const SE = TRUE_POS.select, ST = TRUE_POS.start;
   const arr = pos.array;
   for (let i = 0; i < pos.count; i++) {
     const px = arr[i * 3], py = arr[i * 3 + 1], pz = arr[i * 3 + 2];
@@ -374,12 +347,7 @@ function classifyPressVerts(mesh) {
       const dB = Math.hypot(ry - B[1], rz - B[2]);
       const dSe = Math.hypot(ry - SE[1], rz - SE[2]);
       const dSt = Math.hypot(ry - ST[1], rz - ST[2]);
-      const dyD = Math.abs(ry - DP[1]), dzD = Math.abs(rz - DP[2]);
-      // D-pad 硬切分离：全臂宽 0.025（含侧壁），0.0006 窄 feather 藏缝底，黑框权重归零静止
-      const wV = (1 - smooth01((dzD - 0.025) / 0.0006)) * (1 - smooth01((dyD - 0.083) / 0.001));
-      const wH = (1 - smooth01((dyD - 0.025) / 0.0006)) * (1 - smooth01((dzD - 0.083) / 0.001));
       const cands = [
-        ['dpad', Math.max(wV, wH)],
         ['a', 1 - smooth01((dA - 0.0415) / 0.002)],
         ['b', 1 - smooth01((dB - 0.0415) / 0.002)],
         ['select', 1 - smooth01((dSe - 0.0185) / 0.002)],
@@ -388,15 +356,6 @@ function classifyPressVerts(mesh) {
       let best = null, bestW = 0.001;
       for (const [id, w] of cands) if (w > bestW) { best = id; bestW = w; }
       if (best) { buckets[best].push(i); bws[best].push(bestW); }
-    } else if (ry > SHOULDER_RY) {
-      let wL = (1 - smooth01((Math.abs(rx - L[0]) - 0.065) / 0.010)) * (1 - smooth01((Math.abs(rz - L[2]) - 0.125) / 0.012));
-      let wR = (1 - smooth01((Math.abs(rx - R[0]) - 0.065) / 0.010)) * (1 - smooth01((Math.abs(rz - R[2]) - 0.125) / 0.012));
-      if (samp && (wL > 0.001 || wR > 0.001)) {
-        const dk = shoulderDark(i, uvAttr, samp);
-        wL *= dk; wR *= dk;
-      }
-      if (wL > 0.001 && wL >= wR) { buckets.l.push(i); bws.l.push(wL); }
-      else if (wR > 0.001) { buckets.r.push(i); bws.r.push(wR); }
     }
   }
   for (const id of Object.keys(buckets)) {
@@ -408,53 +367,11 @@ function applySinglePress(id, amt) {
   const set = pressSets[id];
   const depth = PRESS_DEPTH[id] || 0.006;
   const arr = pressAttr.array;
-  if (id === 'l' || id === 'r') {
-    for (let j = 0; j < set.idx.length; j++) {
-      const i = set.idx[j];
-      arr[i * 3 + 2] = pressBase[i * 3 + 2] - (depth * amt * set.w[j]) / CHAIN_S;
-    }
-  } else {
-    for (let j = 0; j < set.idx.length; j++) {
-      const i = set.idx[j];
-      arr[i * 3] = pressBase[i * 3] - (depth * amt * set.w[j]) / CHAIN_S;
-    }
-  }
-  pressAttr.needsUpdate = true;
-}
-const dpadCur = { ry: 0, rz: 0 };
-function applyDpadPress() {
-  // 刚体跷跷板：整个十字架绕中心做纯旋转，无整体下沉，内部权重为1处完全刚体
-  if (!pressAttr || !pressSets.dpad) return;
-  const DP = TRUE_POS.dpad;
-  const cx = DP[0], cy = DP[1], cz = DP[2];
-  const cRy = Math.cos(dpadCur.ry), sRy = Math.sin(dpadCur.ry);
-  const cRz = Math.cos(dpadCur.rz), sRz = Math.sin(dpadCur.rz);
-  const set = pressSets.dpad;
-  const arr = pressAttr.array;
   for (let j = 0; j < set.idx.length; j++) {
-    const i = set.idx[j], w = set.w[j];
-    const bx = pressBase[i * 3], by = pressBase[i * 3 + 1], bz = pressBase[i * 3 + 2];
-    const rx = CHAIN_S * bx, ry = CHAIN_S * bz, rz = -CHAIN_S * by;
-    const dx = rx - cx, dy = ry - cy, dz = rz - cz;
-    const x1 = dx * cRz - dy * sRz, y1 = dx * sRz + dy * cRz;
-    const x2 = x1 * cRy + dz * sRy, y2 = y1, z2 = -x1 * sRy + dz * cRy;
-    const ox = (x2 - dx) * w, oy = (y2 - dy) * w, oz = (z2 - dz) * w;
-    arr[i * 3] = bx + ox / CHAIN_S;
-    arr[i * 3 + 1] = by + (-oz) / CHAIN_S;
-    arr[i * 3 + 2] = bz + oy / CHAIN_S;
+    const i = set.idx[j];
+    arr[i * 3] = pressBase[i * 3] - (depth * amt * set.w[j]) / CHAIN_S;
   }
   pressAttr.needsUpdate = true;
-}
-function updateDpadPress() {
-  const tRz = (buttons['up']?.pressed ? 0.15 : 0) + (buttons['down']?.pressed ? -0.15 : 0);
-  const tRy = (buttons['left']?.pressed ? -0.15 : 0) + (buttons['right']?.pressed ? 0.15 : 0);
-  const to = { ry: tRy, rz: tRz };
-  const from = { ry: dpadCur.ry, rz: dpadCur.rz };
-  tween(70, (k) => {
-    dpadCur.ry = from.ry + (to.ry - from.ry) * k;
-    dpadCur.rz = from.rz + (to.rz - from.rz) * k;
-    applyDpadPress();
-  }, null, easeOut);
 }
 function vertexPress(id, dur) {
   const b = buttons[id];
@@ -474,55 +391,7 @@ function vertexRelease(id, dur) {
     applySinglePress(id, a);
   }, null, easeOut);
 }
-// 已废弃的静态索引集（左偏且 Select 错位，已不再使用，仅保留避免误删）：
-const BUTTON_VERTICES_DEPRECATED = new Uint16Array([
-  8241, 8242, 8497, 8498, 8499, 8506, 8507, 8508, 8509, 8513, 8514, 8515, 8518, 8519, 8520, 8521, 8522, 8523, 8535, 8536,
-  8538, 8539, 8540, 8541, 8542, 8543, 8544, 8546, 8548, 8549, 8550, 8558, 8559, 8560, 8564, 8565, 8566, 13391, 13394, 13395,
-  13396, 13442, 13443, 13444, 13445, 13446, 13448, 13449, 13450, 13467, 13468, 19023, 19038, 19046, 19050, 19053, 19069, 19113, 19114, 19116,
-  19117, 19118, 19122, 19123, 19124, 19125, 19126, 19127, 19128, 19129, 19130, 19131, 19132, 19133, 19134, 19135, 19136, 19137, 19138, 19139,
-  19140, 19141, 19142, 19143, 19144, 19145, 19148, 19149, 19153, 19173, 19174, 19175, 19176, 19177, 19178, 19179, 19180, 19181, 19182, 19183,
-  19184, 19185, 19186, 19187, 19189, 19190, 19191, 19192, 19193, 19194, 19195, 19196, 19197, 19198, 19199, 19201, 19202, 19203, 19204, 19205,
-  19206, 19207, 19212, 19213, 19215, 19217, 19230, 19233, 19234, 19235, 19236, 19238, 19240, 19241, 19242, 19244, 19245, 19246, 19247, 19248,
-  19249, 19250, 19251, 19252, 19275, 19276, 19277, 19278, 19279, 19280, 19284, 19285, 19287, 19288, 19290, 19291, 19306, 19308, 19309, 19310,
-  19311, 19312, 19313, 19314, 19343, 19344, 19345, 19432, 19433, 19435, 19436, 19437, 19438, 19439, 19440, 19441, 19442, 19443, 19444, 19445,
-  19446, 19447, 19448, 19449, 19450, 19451, 19452, 19453, 19455, 19456, 19465, 19485, 19489, 19491, 19495, 19496, 19497, 19499, 19500, 19501,
-  19502, 19503, 19504, 19505, 19506, 19507, 19508, 19509, 19510, 19511, 19512, 19513, 19514, 19515, 19516, 19517, 19518, 19519, 19520, 19521,
-  19522, 19526, 19535, 19536, 19537, 19538, 19539, 19540, 19541, 19542, 19543, 19544, 19545, 19546, 19547, 19548, 19549, 19550, 19551, 19552,
-  19553, 19554, 19555, 19556, 19557, 19558, 19559, 19560, 19561, 19562, 19563, 19564, 19565, 19566, 19567, 19568, 19569, 19570, 19571, 19573,
-  19574, 19575, 19576, 19577, 19578, 19579, 19580, 19581, 19582, 19583, 19584, 19585, 19586, 19587, 19588, 19589, 19590, 19591, 19592, 19593,
-  19594, 19595, 19598, 19599, 19600, 19601, 19604, 19605, 19606, 19607, 19608, 19609, 19610, 19611, 19612, 19613, 19614, 19615, 19616, 19617,
-  19622, 19626, 19627, 19629, 19663, 19664, 19665, 19666, 19667, 19668, 19669, 19670, 19671, 19672, 19673, 19674, 19675, 19676, 19677, 19678,
-  19679, 19683, 19688, 19689, 19690, 19691, 19692, 19693, 19694, 19695, 19696, 19697, 19698, 19699, 19700, 19701, 19702, 19703, 19704, 19705,
-  19706, 19707, 19708, 19709, 19710, 19711, 19712, 19713, 19714, 19715, 19716, 19717, 19718, 19719, 19720, 19721, 19722, 19723, 19724, 19725,
-  19726, 19727, 19728, 19729, 19730, 19731, 19732, 19733, 19734, 19735, 19736, 19737, 19738, 19739, 19740, 19741, 19742, 19743, 19744, 19745,
-  19746, 19747, 19748, 19749, 19750, 19751, 19752, 19753, 19754, 19755, 19756, 19757, 19758, 19759, 19760, 19761, 19762, 19763, 19764, 19765,
-  19767, 19768, 19769, 19771, 19772, 19773, 19774, 19775, 19776, 19777, 19778, 19779, 19780, 19781, 19782, 19783, 19784, 19785, 19786, 19787,
-  19788, 19789, 19790, 19791, 19792, 19793, 19794, 19795, 19796, 19797, 19798, 19799, 19800, 19801, 19802, 19803, 19804, 19805, 19806, 19807,
-  19808, 19809, 19810, 19811, 19812, 19813, 19814, 19815, 19816, 19817, 19818, 19819, 19820, 19821, 19822, 19824, 19825, 19826, 19827, 19828,
-  19829, 19830, 19831, 19832, 19833, 19834, 19835, 19836, 19837, 19838, 19839, 19840, 19841, 19842, 19843, 19844, 19845, 19846, 19847, 19848,
-  19849, 19850, 19851, 19852, 19853, 19854, 19855, 19856, 19857, 19858, 19859, 19860, 19861, 19862, 19863, 19864, 19865, 19866, 19867, 19868,
-  19869, 19870, 19871, 19872, 19873, 19874, 19875, 19876, 19877, 19878, 19879, 19880, 19881, 19882, 19883, 19884, 19885, 19886, 19887, 19888,
-  19889, 19890, 19891, 19892, 19893, 19894, 19895, 19896, 19897, 19899, 19900, 19901, 19902, 19903, 19904, 19905, 19908, 19910, 19911, 19912,
-  19913, 19914, 19915, 19916, 19917, 19919, 19920, 19921, 19922, 19923, 19924, 19925, 19926, 19927, 19928, 19929, 19930, 19931, 19932, 19933,
-  19936, 19937, 19939, 19940, 19941, 19942, 19943, 19944, 19946, 19947, 19948, 19949, 19950, 19951, 19952, 19953, 19954, 19955, 19956, 19957,
-  19958, 19963, 19970, 19971, 19972, 19973, 19974, 19975, 19976, 19977, 19978, 19979, 19980, 19981, 19982, 19983, 19984, 19985, 19986, 19987,
-  19988, 19989, 19990, 19992, 19993, 19994, 19995, 19996, 19997, 19998, 19999, 20001, 20002, 20003, 20004, 20005, 20006, 20007, 20008, 20015,
-  20016, 20017, 20018, 20019, 20020, 20021, 20022, 20023, 20024, 20025, 20026, 20027, 20028, 20029, 20030, 20031, 20032, 20033, 20034, 20035,
-  20036, 20037, 20038, 20039, 20040, 20041, 20042, 20043, 20044, 20045, 20046, 20047, 20048, 20049, 20050, 20051, 20053, 20054, 20055, 20056,
-  20057, 20058, 20059, 20060, 20061, 20062, 20063, 20064, 20065, 20066, 20067, 20068, 20069, 20070, 20071, 20072, 20073, 20074, 20075, 20076,
-  20077, 20078, 20079, 20081, 20083, 20084, 20085, 20088, 20091, 20092, 20093, 20094, 20095, 20096, 20097, 20098, 20099, 20101, 20102, 20103,
-  20104, 20105, 20106, 20107, 20108, 20109, 20110, 20111, 20112, 20113, 20114, 20115, 20116, 20117, 20118, 20119, 20120, 20121, 20122, 20123,
-  20124, 20125, 20126, 20127, 20128, 20129, 20130, 20131, 20132, 20133, 20134, 20135, 20136, 20143, 20157, 20216, 20217, 20218, 20219, 20220,
-  20221, 20222, 20223, 20224, 20225, 20226, 20239, 20240, 20242, 20251, 20252, 20253, 20254, 20255, 20256, 20260, 20263, 20264, 20266, 20278,
-  20281, 20282, 20283, 20284, 20285, 20302, 20304, 20305, 20306, 20313, 20314, 20319, 20320, 20321, 20322, 20323, 20324, 20325, 20326, 20327,
-  20328, 20329, 20330, 20331, 20332, 20333, 20334, 20335, 20336, 20337, 20338, 20339, 20340, 20341, 20342, 20345, 20346, 20347, 20348, 20349,
-  20350, 20351, 20352, 20353, 20354, 20355, 20356, 20357, 20358, 20359, 20360, 20361, 20362, 20363, 20364, 20365, 20366, 20367, 20368, 20369,
-  20370, 20371, 20372, 20373, 20374, 20375, 20376, 20377, 20378, 20379, 20380, 20381, 20382, 20383, 20384, 20385, 20386, 20391, 20392, 20393,
-  20398, 20401, 20406, 20407, 20410, 20413, 20416, 20419, 20422, 20425, 20428, 20431, 20434, 20439, 20440, 20441, 20446, 20449, 20454, 20455,
-  20458, 20461, 20464, 20469, 20470, 20473, 20476, 20479, 20482,
-]);
-
-new GLTFLoader().load('./assets/models/gba.glb?v=20260905', (g) => {
+new GLTFLoader().load('./assets/models/gba.glb?v=20260908-rigid', (g) => {
   root = g.scene;
   root.updateMatrixWorld(true);
 
@@ -530,20 +399,23 @@ new GLTFLoader().load('./assets/models/gba.glb?v=20260905', (g) => {
     if (o.isMesh) {
       o.castShadow = true; o.receiveShadow = true;
       const old = o.material;
+      const interior = old.name === 'ButtonInterior';
       o.material = new THREE.MeshPhysicalMaterial({
+        color: old.color,
+        side: old.side,
         map: old.map,
         normalMap: old.normalMap || null,
         roughnessMap: old.roughnessMap || null,
         metalnessMap: old.metalnessMap || null,
         normalScale: new THREE.Vector2(0.85, 0.85),
-        roughness: 0.46,
-        metalness: 0.05,
-        clearcoat: 0.22,
+        roughness: interior ? 0.65 : 0.46,
+        metalness: interior ? 0 : 0.05,
+        clearcoat: interior ? 0 : 0.22,
         clearcoatRoughness: 0.32
       });
 
-      // 分类原模型按键顶点（只记录权重，不永久改机壳；静息零变形）
-      classifyPressVerts(o);
+      // 只有机身中剩余的 A/B、系统键使用旧顶点通道，独立刚体不参与分类。
+      if (o.name === 'Finam_Material_0') classifyPressVerts(o);
     }
   });
 
@@ -558,6 +430,7 @@ new GLTFLoader().load('./assets/models/gba.glb?v=20260905', (g) => {
 
   gbaLean.rotation.z = 0.20;
 
+  buttonRig = createButtonRig(root, TRUE_POS);
   buildOverlayButtons(root);
   buildScreen(root);
   buildPowerLed(root);
@@ -575,17 +448,6 @@ function registerButton(name, index, group, meshes, pressFn, releaseFn) {
   meshes.forEach(m => { m.userData.buttonName = name; });
 }
 
-function sink(group, depth, dir) {
-  const from = group.position.clone();
-  const to = from.clone();
-  to.x += (dir || 1) * -depth;
-  tween(90, (e) => group.position.lerpVectors(from, to, e), null, easeOut);
-}
-function unsink(group, saved) {
-  const from = group.position.clone();
-  tween(140, (e) => group.position.lerpVectors(from, saved, e), null, easeOut);
-}
-
 function buildOverlayButtons(rt) {
   const btn = new THREE.Group();
   rt.add(btn);
@@ -594,6 +456,7 @@ function buildOverlayButtons(rt) {
   const dpadPick = new THREE.Group();
   dpadPick.position.set(TRUE_POS.dpad[0], TRUE_POS.dpad[1], TRUE_POS.dpad[2]);
   btn.add(dpadPick);
+  buttonRig.attachPick('dpad', dpadPick);
 
   // 四向独立不可见拾取盒（视觉隐藏但可射线命中，保持 up(4)/down(5)/left(6)/right(7) 解耦）
   const hitMat = new THREE.MeshBasicMaterial({ transparent: true, opacity: 0, depthWrite: false });
@@ -608,21 +471,23 @@ function buildOverlayButtons(rt) {
   const mLeft = dpadHit(0.04, 0.032, 0.062, 0, 0, 0.052);
   const mRight = dpadHit(0.04, 0.032, 0.062, 0, 0, -0.052);
 
-  registerButton('up', 4, dpadPick, [mUp], updateDpadPress, updateDpadPress);
-  registerButton('down', 5, dpadPick, [mDown], updateDpadPress, updateDpadPress);
-  registerButton('left', 6, dpadPick, [mLeft], updateDpadPress, updateDpadPress);
-  registerButton('right', 7, dpadPick, [mRight], updateDpadPress, updateDpadPress);
+  registerButton('up', 4, dpadPick, [mUp], () => {}, () => {});
+  registerButton('down', 5, dpadPick, [mDown], () => {}, () => {});
+  registerButton('left', 6, dpadPick, [mLeft], () => {}, () => {});
+  registerButton('right', 7, dpadPick, [mRight], () => {}, () => {});
 
   /* A / B（Nintendo 左 B 右 A；用原模型红键，不加圆柱/贴字；不可见拾取+原顶点下沉） */
-  // 不可见拾取体（opacity 0）+ 原顶点按压，下同 Select/Start/肩键共用
+  // 不可见拾取体（opacity 0）；肩键的拾取体挂在同一个刚体支点下。
   const pickMat = new THREE.MeshBasicMaterial({ transparent: true, opacity: 0, depthWrite: false });
   function pressPick(id, index, cx, cy, cz, sx, sy, sz, downDur, upDur) {
     const pick = new THREE.Mesh(new THREE.BoxGeometry(sx, sy, sz), pickMat);
     pick.position.set(cx, cy, cz);
     btn.add(pick);
+    const rigid = id === 'l' || id === 'r';
+    if (rigid) buttonRig.attachPick(id, pick);
     registerButton(id, index, pick, [pick],
-      () => vertexPress(id, downDur),
-      () => vertexRelease(id, upDur));
+      rigid ? () => {} : () => vertexPress(id, downDur),
+      rigid ? () => {} : () => vertexRelease(id, upDur));
   }
   // 右 A：高位靠右；左 B：低位靠左（红键直径 0.082，拾取盒稍放大到 0.095）
   pressPick('a', 8, TRUE_POS.a[0], TRUE_POS.a[1], TRUE_POS.a[2], 0.03, 0.095, 0.095, 75, 110);
@@ -632,7 +497,7 @@ function buildOverlayButtons(rt) {
   pressPick('select', 2, TRUE_POS.select[0], TRUE_POS.select[1], TRUE_POS.select[2], 0.03, 0.05, 0.05, 70, 100);
   pressPick('start', 3, TRUE_POS.start[0], TRUE_POS.start[1], TRUE_POS.start[2], 0.03, 0.05, 0.05, 70, 100);
 
-  /* L / R 肩键：用原模型顶边大曲板（带 L/R 浮雕），不加小方块；不可见拾取+原顶点下沉 */
+  /* L / R：GLB 独立原曲板（含 L/R 刻字），整件绕内侧铰链下转。 */
   pressPick('l', 10, TRUE_POS.l[0], TRUE_POS.l[1], TRUE_POS.l[2], 0.16, 0.10, 0.28, 90, 140);
   pressPick('r', 11, TRUE_POS.r[0], TRUE_POS.r[1], TRUE_POS.r[2], 0.16, 0.10, 0.28, 90, 140);
 }
@@ -798,9 +663,13 @@ addEventListener('resize', () => {
   renderer.setSize(innerWidth, innerHeight);
 });
 
+let previousFrame = performance.now();
 renderer.setAnimationLoop(() => {
   const now = performance.now();
+  const dt = Math.max(0, (now - previousFrame) / 1000);
+  previousFrame = now;
   runTweens(now);
+  buttonRig?.update(dt, buttons);
   controls.update();
   frameCbs.forEach(cb => cb(now));
   renderer.render(scene, camera);
